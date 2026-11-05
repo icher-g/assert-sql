@@ -391,6 +391,8 @@ public interface Expect {
          * Requires SQM model equality. Formatting, ordinary comments, and keyword
          * casing are ignored. Identifier spelling and quoting, aliases, values,
          * and ordering are preserved; no semantic normalization is performed.
+         * Mismatches show enclosing SQL rendered in this dialect. Model paths
+         * and values are included only as a fallback if rendering is unavailable.
          *
          * @param expectedSql non-null SQL parsed only during evaluation
          * @return this builder

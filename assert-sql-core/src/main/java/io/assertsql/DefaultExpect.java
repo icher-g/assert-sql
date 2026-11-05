@@ -9,6 +9,12 @@ import io.sqm.parser.postgresql.spi.PostgresSpecs;
 import io.sqm.parser.spi.ParseContext;
 import io.sqm.parser.spi.Specs;
 import io.sqm.parser.sqlserver.spi.SqlServerSpecs;
+import io.sqm.render.ansi.spi.AnsiDialect;
+import io.sqm.render.mysql.spi.MySqlDialect;
+import io.sqm.render.oracle.spi.OracleDialect;
+import io.sqm.render.postgresql.spi.PostgresDialect;
+import io.sqm.render.spi.SqlDialect;
+import io.sqm.render.sqlserver.spi.SqlServerDialect;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -31,15 +37,14 @@ final class DefaultExpect implements Expect {
     }
 
     static Expect.Builder builder(SqlDialectId dialect) {
-        Supplier<Specs> specs = switch (dialect.value()) {
-            case "ansi" -> AnsiSpecs::new;
-            case "postgresql" -> PostgresSpecs::new;
-            case "mysql" -> MySqlSpecs::new;
-            case "sqlserver" -> SqlServerSpecs::new;
-            case "oracle" -> OracleSpecs::new;
+        return switch (dialect.value()) {
+            case "ansi" -> new Builder(AnsiSpecs::new, AnsiDialect::new);
+            case "postgresql" -> new Builder(PostgresSpecs::new, PostgresDialect::new);
+            case "mysql" -> new Builder(MySqlSpecs::new, MySqlDialect::new);
+            case "sqlserver" -> new Builder(SqlServerSpecs::new, SqlServerDialect::new);
+            case "oracle" -> new Builder(OracleSpecs::new, OracleDialect::new);
             default -> throw new IllegalArgumentException("Unsupported SQL dialect: " + dialect.value());
         };
-        return new Builder(specs);
     }
 
     @Override
@@ -66,11 +71,13 @@ final class DefaultExpect implements Expect {
 
     private static final class Builder implements Expect.Builder {
         private final Supplier<Specs> specs;
+        private final Supplier<SqlDialect> renderer;
         private final List<Function<ParseContext, Check>> requirements = new ArrayList<>();
         private String description;
 
-        private Builder(Supplier<Specs> specs) {
+        private Builder(Supplier<Specs> specs, Supplier<SqlDialect> renderer) {
             this.specs = specs;
+            this.renderer = renderer;
         }
 
         @Override
@@ -298,13 +305,14 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder structurallyEquals(String expectedSql) {
             Objects.requireNonNull(expectedSql, "expectedSql");
+            var dialect = renderer;
             return append(context -> {
                 var parsed = context.parse(Statement.class, expectedSql);
                 if (!parsed.ok()) {
                     throw new IllegalArgumentException("Invalid expected SQL: " + parsed.errorMessage());
                 }
                 var expected = parsed.value();
-                return actual -> expected.equals(actual) ? List.of() : List.of(StructureDifference.between(expected, actual));
+                return actual -> expected.equals(actual) ? List.of() : List.of(StructureDifference.between(expected, actual, dialect.get()));
             });
         }
 
@@ -392,6 +400,7 @@ final class DefaultExpect implements Expect {
 
         private <T extends Node> Expect.Builder orderedItems(String[] items, String kind, Class<T> type, Function<Statement, List<T>> inspect) {
             var snapshot = fragments(items, kind);
+            var dialect = renderer;
             return append(context -> {
                 var expected = snapshot.stream().map(item -> parseExpected(context, type, item, kind)).toList();
                 Check check = statement -> {
@@ -399,7 +408,7 @@ final class DefaultExpect implements Expect {
                     if (expected.equals(actual)) {
                         return List.of();
                     }
-                    var difference = StructureDifference.between(expected, actual);
+                    var difference = StructureDifference.between(expected, actual, dialect.get());
                     return List.of(new Mismatch(kind.toUpperCase(Locale.ROOT) + "_MISMATCH", difference.path(), difference.message()));
                 };
                 return kind.equals("order_by") ? outerClause(check) : check;

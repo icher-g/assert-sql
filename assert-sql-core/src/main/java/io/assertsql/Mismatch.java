@@ -6,7 +6,7 @@ import java.util.Objects;
  * A diagnostic describing an unmet expectation.
  *
  * @param code machine-readable diagnostic code
- * @param path location within the statement; empty when not applicable
+ * @param path location within the statement; empty when not applicable or the SQL fragment provides sufficient context
  * @param message human-readable explanation
  */
 public record Mismatch(String code, String path, String message) {
