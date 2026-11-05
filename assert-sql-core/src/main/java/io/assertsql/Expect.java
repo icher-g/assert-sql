@@ -1,5 +1,6 @@
 package io.assertsql;
 
+import io.sqm.core.JoinKind;
 import io.sqm.core.dialect.SqlDialectId;
 
 import java.util.Objects;
@@ -11,6 +12,9 @@ import java.util.Objects;
  * Invalid expected SQL is reported after actual SQL parses successfully.
  * Built expectations support concurrent reuse when their custom checks are
  * thread-safe. SQL is never executed.
+ * Ordering/pagination checks return SQM_SCOPE_UNSUPPORTED for set-query models
+ * whose final term carries ordering/pagination, since SQM 0.5.0 loses the
+ * distinction between local and outer clauses in that shape.
  */
 public interface Expect {
     /**
@@ -161,6 +165,192 @@ public interface Expect {
          * @return this builder
          */
         Builder noJoin();
+
+        /**
+         * Requires joined named tables anywhere, ignoring join type and condition.
+         * Only the immediate right-hand Table of a join counts, not tables inside
+         * a joined derived query. Uses table name/schema/alias matching rules.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        Builder joinTable(String... names);
+
+        /**
+         * Requires joined named tables with the specified SQM kind (ON or USING).
+         * CROSS and NATURAL joins are distinct model types and do not match a kind.
+         *
+         * @param kind  required SQM join kind
+         * @param names one or more table references
+         * @return this builder
+         */
+        Builder joinTable(JoinKind kind, String... names);
+
+        /**
+         * Forbids joined named tables of any join type.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        Builder noJoinTable(String... names);
+
+        /**
+         * Forbids joined named tables with the specified ON/USING join kind.
+         *
+         * @param kind  required SQM join kind
+         * @param names one or more table references
+         * @return this builder
+         */
+        Builder noJoinTable(JoinKind kind, String... names);
+
+        /**
+         * Requires inner-joined named tables.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        default Builder innerJoinTable(String... names) {
+            return joinTable(JoinKind.INNER, names);
+        }
+
+        /**
+         * Requires left-joined named tables.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        default Builder leftJoinTable(String... names) {
+            return joinTable(JoinKind.LEFT, names);
+        }
+
+        /**
+         * Requires right-joined named tables.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        default Builder rightJoinTable(String... names) {
+            return joinTable(JoinKind.RIGHT, names);
+        }
+
+        /**
+         * Requires full-joined named tables.
+         *
+         * @param names one or more table references
+         * @return this builder
+         */
+        default Builder fullJoinTable(String... names) {
+            return joinTable(JoinKind.FULL, names);
+        }
+
+        /**
+         * Requires every structural SELECT item in the outer projection, ignoring
+         * list order and permitting extra items. Aliases are part of item equality.
+         * WITH uses its body; set operations use their first term's projection.
+         *
+         * @param items one or more individual SELECT item fragments
+         * @return this builder
+         */
+        Builder projection(String... items);
+
+        /**
+         * Forbids every structural SELECT item in the outer projection.
+         *
+         * @param items one or more individual SELECT item fragments
+         * @return this builder
+         */
+        Builder noProjection(String... items);
+
+        /**
+         * Requires the complete outer projection in the given order, including
+         * aliases, duplicates, and wildcards, using SQM item equality.
+         *
+         * @param items one or more individual SELECT item fragments
+         * @return this builder
+         */
+        Builder exactProjection(String... items);
+
+        /**
+         * Requires the complete outer ORDER BY list in the given order, using SQM
+         * equality. Explicit ASC and omitted direction remain distinct. WITH uses
+         * its body; set operations use their own ORDER BY, not a term's ordering.
+         *
+         * @param items one or more individual order item fragments, without ORDER BY
+         * @return this builder
+         */
+        Builder orderBy(String... items);
+
+        /**
+         * Requires no outer ORDER BY clause.
+         *
+         * @return this builder
+         */
+        Builder noOrderBy();
+
+        /**
+         * Requires a literal outer row limit. Ordinary SQL Server TOP counts match;
+         * TOP PERCENT, WITH TIES, LIMIT ALL, parameters, and absence do not.
+         *
+         * @param count non-negative row count
+         * @return this builder
+         */
+        Builder limit(long count);
+
+        /**
+         * Requires no outer limit specification, including TOP or LIMIT ALL.
+         *
+         * @return this builder
+         */
+        Builder noLimit();
+
+        /**
+         * Requires a literal outer offset. Absence is different from explicit zero.
+         *
+         * @param count non-negative row count
+         * @return this builder
+         */
+        Builder offset(long count);
+
+        /**
+         * Requires no outer offset specification.
+         *
+         * @return this builder
+         */
+        Builder noOffset();
+
+        /**
+         * Requires named parameters anywhere in the statement. Names are canonical
+         * (no prefix) and case-sensitive, unlike column/table identifier matching.
+         *
+         * @param names one or more non-blank parameter names
+         * @return this builder
+         */
+        Builder parameter(String... names);
+
+        /**
+         * Forbids the supplied canonical named parameters throughout the statement.
+         *
+         * @param names one or more non-blank parameter names
+         * @return this builder
+         */
+        Builder noParameter(String... names);
+
+        /**
+         * Requires the total number of named, anonymous, and ordinal placeholder
+         * occurrences. Repeated names/ordinals count repeatedly; bindings are not inspected.
+         *
+         * @param count non-negative occurrence count
+         * @return this builder
+         */
+        Builder parameterCount(int count);
+
+        /**
+         * Requires the number of anonymous and ordinal placeholder occurrences.
+         *
+         * @param count non-negative positional occurrence count
+         * @return this builder
+         */
+        Builder positionalParameterCount(int count);
 
         /**
          * Requires SQM model equality with the complete outer WHERE predicate.

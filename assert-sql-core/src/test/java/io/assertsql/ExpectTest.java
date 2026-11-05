@@ -21,8 +21,7 @@ class ExpectTest {
         assertEquals(0, calls.get());
         assertFalse(expectation.matches("SELECT 1"));
         assertEquals(1, calls.get());
-        var error = assertThrows(AssertionError.class,
-            () -> expectation.assertMatches("SELECT 1"));
+        var error = assertThrows(AssertionError.class, () -> expectation.assertMatches("SELECT 1"));
         assertEquals(2, calls.get());
         assertEquals(Match.of(List.of(mismatch)).describe(), error.getMessage());
     }

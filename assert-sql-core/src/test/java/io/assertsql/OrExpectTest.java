@@ -13,7 +13,8 @@ class OrExpectTest {
     void succeedsWhenAnyAlternativeMatchesAndKeepsAndWithinEachBranch() {
         var expectation = Expect.or(
             Expect.sql(POSTGRESQL).table("users").column("id").build(),
-            Expect.sql(POSTGRESQL).table("orders").column("total").build());
+            Expect.sql(POSTGRESQL).table("orders").column("total").build()
+        );
         expectation.assertMatches("SELECT id FROM users");
         expectation.assertMatches("SELECT total FROM orders");
         assertFalse(expectation.matches("SELECT id FROM orders"));
@@ -22,8 +23,8 @@ class OrExpectTest {
 
     @Test
     void reportsAllFailedBranchesWithPaths() {
-        var result = Expect.or(Expect.sql(POSTGRESQL).table("users").build(),
-            Expect.sql(POSTGRESQL).column("id").build()).evaluate("SELECT name FROM orders");
+        var result = Expect.or(Expect.sql(POSTGRESQL).table("users").build(), Expect.sql(POSTGRESQL).column("id").build())
+            .evaluate("SELECT name FROM orders");
         assertFalse(result.matches());
         assertEquals("OR_NOT_MATCHED", result.mismatches().getFirst().code());
         assertEquals("or[0].statement", result.mismatches().get(1).path());
@@ -51,9 +52,10 @@ class OrExpectTest {
         var expectation = Expect.or(Expect.sql(POSTGRESQL).satisfies(statement -> { throw failure; }).build(),
             Expect.sql(POSTGRESQL).select().build());
         assertSame(failure, assertThrows(IllegalStateException.class, () -> expectation.matches("SELECT 1")));
-        assertThrows(IllegalArgumentException.class, () -> Expect.or(
-            Expect.sql(POSTGRESQL).column("SELECT FROM").build(),
-            Expect.sql(POSTGRESQL).select().build()).matches("SELECT 1"));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> Expect.or(Expect.sql(POSTGRESQL).column("SELECT FROM").build(), Expect.sql(POSTGRESQL).select().build()).matches("SELECT 1")
+        );
     }
 
     @Test
@@ -62,14 +64,12 @@ class OrExpectTest {
         var snapshot = Expect.or(alternatives);
         alternatives[0] = Expect.sql(POSTGRESQL).table("missing").build();
         snapshot.assertMatches("SELECT id FROM users");
-        Expect.or(snapshot, Expect.or(Expect.sql(POSTGRESQL).table("orders").build()))
-            .assertMatches("SELECT id FROM orders");
+        Expect.or(snapshot, Expect.or(Expect.sql(POSTGRESQL).table("orders").build())).assertMatches("SELECT id FROM orders");
     }
 
     @Test
     void alternativesCanUseDifferentDialects() {
-        Expect.or(Expect.sql(ANSI).column("id").build(), Expect.sql(MYSQL).column("id").build())
-            .assertMatches("SELECT `id` FROM `users`");
+        Expect.or(Expect.sql(ANSI).column("id").build(), Expect.sql(MYSQL).column("id").build()).assertMatches("SELECT `id` FROM `users`");
     }
 
     @Test
@@ -77,17 +77,14 @@ class OrExpectTest {
         assertThrows(IllegalArgumentException.class, Expect::or);
         assertThrows(NullPointerException.class, () -> Expect.or((Expect[]) null));
         assertThrows(NullPointerException.class, () -> Expect.or((Expect) null));
-        assertThrows(NullPointerException.class,
-            () -> Expect.or(Expect.sql(POSTGRESQL).select().build()).evaluate(null));
+        assertThrows(NullPointerException.class, () -> Expect.or(Expect.sql(POSTGRESQL).select().build()).evaluate(null));
     }
 
     @Test
     void parseFailuresDoNotSatisfyOrEvenWithNegativeChecks() {
-        var expectation = Expect.or(Expect.sql(POSTGRESQL).noColumn("password").build(),
-            Expect.sql(ANSI).noTable("users").build());
+        var expectation = Expect.or(Expect.sql(POSTGRESQL).noColumn("password").build(), Expect.sql(ANSI).noTable("users").build());
         assertFalse(expectation.matches("not sql"));
         assertThrows(AssertionError.class, () -> expectation.assertMatches("not sql"));
-        assertEquals(2, expectation.evaluate("not sql").mismatches().stream()
-            .filter(mismatch -> mismatch.code().equals("PARSE_ERROR")).count());
+        assertEquals(2, expectation.evaluate("not sql").mismatches().stream().filter(mismatch -> mismatch.code().equals("PARSE_ERROR")).count());
     }
 }

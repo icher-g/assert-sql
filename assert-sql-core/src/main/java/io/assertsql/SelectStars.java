@@ -35,7 +35,6 @@ final class SelectStars extends RecursiveNodeVisitor<Void> {
     }
 
     private void report(String wildcard) {
-        mismatches.add(new Mismatch("SELECT_STAR", "statement",
-            "Unexpected SELECT wildcard projection: " + wildcard + "."));
+        mismatches.add(new Mismatch("SELECT_STAR", "statement", "Unexpected SELECT wildcard projection: " + wildcard + "."));
     }
 }

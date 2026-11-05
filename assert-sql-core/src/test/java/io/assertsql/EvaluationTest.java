@@ -22,8 +22,7 @@ class EvaluationTest {
     @ParameterizedTest
     @ValueSource(strings = {"ansi", "postgresql", "mysql", "sqlserver", "oracle"})
     void parsesCommonSqlInEveryDialect(String dialect) {
-        Expect.sql(SqlDialectId.of(dialect)).select().table("users")
-            .noSelectStar().build().assertMatches("SELECT id FROM users");
+        Expect.sql(SqlDialectId.of(dialect)).select().table("users").noSelectStar().build().assertMatches("SELECT id FROM users");
     }
 
     @ParameterizedTest
@@ -103,23 +102,19 @@ class EvaluationTest {
                 return List.of(new Mismatch("CUSTOM_TWO", "", "Second custom failure."));
             })
             .build().evaluate("SELECT 1");
-        assertEquals(List.of("CUSTOM_ONE", "CUSTOM_TWO"),
-            result.mismatches().stream().map(Mismatch::code).toList());
+        assertEquals(List.of("CUSTOM_ONE", "CUSTOM_TWO"), result.mismatches().stream().map(Mismatch::code).toList());
     }
 
     @Test
     void collectsFailuresInDeclarationOrderAndAppliesDescription() {
-        var base = Expect.sql(POSTGRESQL).select().table("missing")
-            .noSelectStar();
+        var base = Expect.sql(POSTGRESQL).select().table("missing").noSelectStar();
         var undescribed = base.build();
         var result = base.as("user lookup").build().evaluate("UPDATE users SET id = (SELECT * FROM orders)");
-        assertEquals(List.of("NOT_SELECT", "TABLE_NOT_REFERENCED", "SELECT_STAR"),
-            result.mismatches().stream().map(Mismatch::code).toList());
+        assertEquals(List.of("NOT_SELECT", "TABLE_NOT_REFERENCED", "SELECT_STAR"), result.mismatches().stream().map(Mismatch::code).toList());
         var error = assertThrows(AssertionError.class, result::assertMatches);
         assertTrue(error.getMessage().startsWith("[user lookup]"));
         assertFalse(undescribed.evaluate("SELECT 1").describe().contains("user lookup"));
-        assertTrue(Expect.sql(POSTGRESQL).as("success").select().build().evaluate("SELECT 1")
-            .describe().startsWith("[success]"));
+        assertTrue(Expect.sql(POSTGRESQL).as("success").select().build().evaluate("SELECT 1").describe().startsWith("[success]"));
     }
 
     @ParameterizedTest
@@ -158,11 +153,11 @@ class EvaluationTest {
         var failure = new IllegalStateException("custom failure");
         var expectation = Expect.sql(POSTGRESQL).satisfies(statement -> { throw failure; });
         assertSame(failure, assertThrows(IllegalStateException.class, () -> expectation.build().matches("SELECT 1")));
-        assertThrows(NullPointerException.class,
-            () -> Expect.sql(POSTGRESQL).satisfies(statement -> null).build().matches("SELECT 1"));
-        assertThrows(NullPointerException.class,
-            () -> Expect.sql(POSTGRESQL).satisfies(statement -> Collections.singletonList(null))
-                .build().matches("SELECT 1"));
+        assertThrows(NullPointerException.class, () -> Expect.sql(POSTGRESQL).satisfies(statement -> null).build().matches("SELECT 1"));
+        assertThrows(
+            NullPointerException.class,
+            () -> Expect.sql(POSTGRESQL).satisfies(statement -> Collections.singletonList(null)).build().matches("SELECT 1")
+        );
     }
 
     @ParameterizedTest
@@ -191,19 +186,20 @@ class EvaluationTest {
     @Test
     void countStarIsNotAWildcardProjectionAndAllWildcardsAreReported() {
         Expect.sql(POSTGRESQL).noSelectStar().build().assertMatches("SELECT COUNT(*) FROM users");
-        assertEquals(2, Expect.sql(POSTGRESQL).noSelectStar()
-            .build().evaluate("SELECT *, u.* FROM users u").mismatches().size());
+        assertEquals(2, Expect.sql(POSTGRESQL).noSelectStar().build().evaluate("SELECT *, u.* FROM users u").mismatches().size());
     }
 
     @Test
     void expectationSupportsConcurrentReuse() throws Exception {
-        var expectation = Expect.sql(POSTGRESQL).select().table("users")
-            .noSelectStar().structurallyEquals("SELECT id FROM users").build();
+        var expectation = Expect.sql(POSTGRESQL).select().table("users").noSelectStar().structurallyEquals("SELECT id FROM users").build();
         try (var executor = Executors.newFixedThreadPool(4)) {
-            var futures = executor.invokeAll(IntStream.range(0, 24)
-                .<java.util.concurrent.Callable<Boolean>>mapToObj(i ->
-                    () -> expectation.matches(i % 2 == 0 ? "SELECT id FROM users" : "SELECT * FROM orders"))
-                .toList());
+            var futures = executor.invokeAll(
+                IntStream.range(0, 24)
+                    .<java.util.concurrent.Callable<Boolean>>mapToObj(i ->
+                        () -> expectation.matches(i % 2 == 0 ? "SELECT id FROM users" : "SELECT * FROM orders")
+                    )
+                    .toList()
+            );
             for (int i = 0; i < futures.size(); i++) {
                 assertEquals(i % 2 == 0, futures.get(i).get());
             }
