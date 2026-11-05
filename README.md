@@ -89,6 +89,41 @@ another assertion framework, for example JUnit's
   WHERE satisfies `noWhere("id = 1")`, whereas `noWhere()` rejects any outer WHERE.
 - `noSelectStar()` rejects both `*` and qualified wildcard projections
   in every query scope. `COUNT(*)` is allowed.
+- `joinTable(String... names)` checks immediate named table sources of joins in
+  all query scopes, without fixing the ON/USING condition. `innerJoinTable`,
+  `leftJoinTable`, `rightJoinTable`, and `fullJoinTable` also require the join kind.
+  `joinTable(JoinKind, String...)` exposes SQM's kinds directly, including STRAIGHT.
+  ON and USING joins can match a kind; CROSS/NATURAL joins match the untyped
+  `joinTable` check. `noJoinTable(...)` and `noJoinTable(JoinKind, ...)` forbid those
+  matches. These methods use table name/schema/alias matching, not full structural
+  join equality. A table only inside a joined derived query is not that join's
+  immediate named source.
+- `projection(String... items)` requires individual structural SELECT items in
+  the outer projection; additional items and different list order are allowed.
+  `noProjection(...)` forbids those items. `exactProjection(...)` requires exactly
+  those items in that order, preserving duplicates. Aliases, expression structure,
+  identifier spelling, and wildcards are significant. Omitting an expected alias
+  does not ignore an actual alias. WITH uses its body; a set operation uses its
+  first term's projection. DML has no SELECT projection for these checks.
+- `orderBy(String... items)` checks the entire outer ORDER BY list in order,
+  including direction, NULL ordering, expressions, and ordinals. Supply individual
+  items without `ORDER BY`. Explicit ASC and omitted direction are distinct SQM
+  structures. `noOrderBy()` requires no outer ordering. Neither method searches
+  subqueries or window ordering.
+- `limit(long)` and `offset(long)` check literal counts on the outer query.
+  SQM maps LIMIT/OFFSET and OFFSET/FETCH to the same model. Ordinary SQL Server
+  TOP is recognized as a limit; TOP PERCENT and WITH TIES are not fixed row limits.
+  Parameterized expressions do not match literal counts. Absence differs from
+  explicit zero. `noLimit()` requires no limit specification (including TOP or
+  LIMIT ALL); `noOffset()` requires no offset. Negative expected counts are rejected.
+- `parameter(String... names)` and `noParameter(...)` inspect named parameters
+  throughout the statement using SQM's `ParametersCollector`. Supply canonical
+  names without `:`, `@`, or template prefixes. Names are case-sensitive.
+  `parameterCount(int)` counts all named, anonymous, and ordinal placeholder
+  occurrences; `positionalParameterCount(int)` counts only anonymous/ordinal ones.
+  Repeated names/ordinals count repeatedly, not as distinct bindings. Strings and
+  comments containing placeholder-like text do not count. Expected counts must be
+  non-negative, and no supplied bind values are inspected.
 - `structurallyEquals(expectedSql)` compares parsed SQM models. Whitespace,
   ordinary comments, and keyword casing do not affect equality. Identifier
   spelling and quoting, aliases, projection order, predicates, literals, and
@@ -106,6 +141,60 @@ Invalid expected SQL or fragments throw `IllegalArgumentException` during evalua
 after actual SQL parses successfully. A parse failure skips requirement preparation
 and evaluation. Null arguments are rejected. Unexpected errors
 from custom checks propagate rather than becoming mismatches.
+
+## Join sources, projection, and pagination
+
+```java
+var page = Expect.sql(POSTGRESQL)
+    .select()
+    .table("users u")
+    .leftJoinTable("orders o")
+    .exactProjection("u.id", "u.name AS display_name")
+    .orderBy("u.created_at DESC", "u.id ASC")
+    .limit(20)
+    .offset(40)
+    .parameter("tenantId")
+    .noParameter("password")
+    .parameterCount(1)
+    .build();
+
+page.assertMatches("""
+    SELECT u.id, u.name AS display_name
+    FROM users u LEFT JOIN orders o ON o.user_id = u.id
+    WHERE u.tenant_id = :tenantId
+    ORDER BY u.created_at DESC, u.id ASC
+    LIMIT 20 OFFSET 40
+    """);
+```
+
+Join-source checks describe presence/type rather than full join conditions. For
+example, changing the join above to INNER fails `leftJoinTable("orders o")`, while
+changing the ON predicate alone does not. Use `join(...)` when the condition is
+part of the contract. Likewise, use `column(...)` for references anywhere and
+`projection(...)` for the output list specifically.
+
+### SQM 0.5.0 boundaries
+
+Assert SQL inspects the SQM model without reparsing or interpreting SQL itself.
+The current SQM parser attaches trailing ORDER BY/LIMIT/OFFSET to the last term
+of some unparenthesized set queries rather than to their composite node. Our outer
+ordering/pagination checks return `SQM_SCOPE_UNSUPPORTED` when the final term
+carries such clauses; both positive and negative assertions fail instead of
+guessing the scope. This conservative restriction also applies to intentionally
+term-local clauses on the last term, since that distinction is lost in the model.
+For composite-level assertions with this version, parenthesize the terms and put
+the ordering/pagination after the composite query:
+
+```sql
+(SELECT id FROM users) UNION (SELECT id FROM orders)
+ORDER BY id DESC LIMIT 20 OFFSET 40
+```
+
+This parser boundary needs an SQM fix; Assert SQL does not silently reinterpret
+the final term's clauses. SQL Server's native `@id` expression syntax and some
+keyword-based names such as `:limit` are also rejected by SQM 0.5.0. Parser-supported
+canonical named syntax such as `:id` and `:pageSize` works. These inputs produce
+parse diagnostics rather than successful negative assertions.
 
 ## Multiple requirements and alternatives
 

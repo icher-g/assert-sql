@@ -20,9 +20,9 @@ class MatchTest {
 
     @Test
     void preservesAllDiagnosticsInOrderAndThrowsStandardAssertionError() {
-        var result = Match.of(List.of(
-            new Mismatch("WRONG_KIND", "", "Expected SELECT."),
-            new Mismatch("STAR", "SELECT.items[0]", "Unexpected wildcard.")));
+        var result = Match.of(
+            List.of(new Mismatch("WRONG_KIND", "", "Expected SELECT."), new Mismatch("STAR", "SELECT.items[0]", "Unexpected wildcard."))
+        );
 
         assertFalse(result.matches());
         assertEquals("""
@@ -47,8 +47,7 @@ class MatchTest {
     @Test
     void rejectsInvalidDiagnostics() {
         assertThrows(NullPointerException.class, () -> Match.of(null));
-        assertThrows(NullPointerException.class,
-            () -> Match.of(Collections.singletonList(null)));
+        assertThrows(NullPointerException.class, () -> Match.of(Collections.singletonList(null)));
         assertThrows(NullPointerException.class, () -> new Mismatch(null, "", "message"));
         assertThrows(NullPointerException.class, () -> new Mismatch("CODE", null, "message"));
         assertThrows(NullPointerException.class, () -> new Mismatch("CODE", "", null));

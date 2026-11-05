@@ -20,32 +20,42 @@ class FragmentExpectationsTest {
 
     @Test
     void positiveVarargsRequireEveryItemAndCollectAllFailures() {
-        Expect.sql(POSTGRESQL).table("users u", "orders o", "payments p")
+        Expect.sql(POSTGRESQL)
+            .table("users u", "orders o", "payments p")
             .column("u.id", "u.name", "o.user_id", "p.order_id")
             .join("INNER JOIN orders o ON o.user_id = u.id", "LEFT JOIN payments p ON p.order_id = o.id")
-            .where("u.active = true").build().assertMatches(SQL);
+            .where("u.active = true")
+            .build()
+            .assertMatches(SQL);
 
-        var result = Expect.sql(POSTGRESQL).table("users", "missing", "other")
-            .column("u.id", "secret", "password").build().evaluate(SQL);
-        assertEquals(List.of("TABLE_NOT_REFERENCED", "TABLE_NOT_REFERENCED",
-            "COLUMN_NOT_REFERENCED", "COLUMN_NOT_REFERENCED"),
-            result.mismatches().stream().map(Mismatch::code).toList());
+        var result = Expect.sql(POSTGRESQL).table("users", "missing", "other").column("u.id", "secret", "password").build().evaluate(SQL);
+        assertEquals(
+            List.of("TABLE_NOT_REFERENCED", "TABLE_NOT_REFERENCED", "COLUMN_NOT_REFERENCED", "COLUMN_NOT_REFERENCED"),
+            result.mismatches().stream().map(Mismatch::code).toList()
+        );
     }
 
     @Test
     void negativeVarargsRequireEveryItemToBeAbsent() {
-        Expect.sql(POSTGRESQL).noTable("legacy_users", "archive")
+        Expect.sql(POSTGRESQL)
+            .noTable("legacy_users", "archive")
             .noColumn("password", "secret")
             .noJoin("CROSS JOIN legacy_users", "RIGHT JOIN orders o ON o.user_id = u.id")
-            .noWhere("u.active = false", "u.id = 1").build().assertMatches(SQL);
+            .noWhere("u.active = false", "u.id = 1")
+            .build()
+            .assertMatches(SQL);
 
-        var result = Expect.sql(POSTGRESQL).noTable("users", "orders", "absent")
+        var result = Expect.sql(POSTGRESQL)
+            .noTable("users", "orders", "absent")
             .noColumn("u.id", "u.name", "absent")
             .noJoin("INNER JOIN orders o ON o.user_id = u.id", "LEFT JOIN payments p ON p.order_id = o.id")
-            .noWhere("u.active = true", "u.active = false").build().evaluate(SQL);
-        assertEquals(List.of("TABLE_PRESENT", "TABLE_PRESENT", "COLUMN_PRESENT", "COLUMN_PRESENT",
-            "JOIN_PRESENT", "JOIN_PRESENT", "WHERE_PRESENT"),
-            result.mismatches().stream().map(Mismatch::code).toList());
+            .noWhere("u.active = true", "u.active = false")
+            .build()
+            .evaluate(SQL);
+        assertEquals(
+            List.of("TABLE_PRESENT", "TABLE_PRESENT", "COLUMN_PRESENT", "COLUMN_PRESENT", "JOIN_PRESENT", "JOIN_PRESENT", "WHERE_PRESENT"),
+            result.mismatches().stream().map(Mismatch::code).toList()
+        );
     }
 
     @Test
@@ -60,8 +70,7 @@ class FragmentExpectationsTest {
     void columnsAreReferencesAnywhereRatherThanOnlyProjections() {
         var sql = "SELECT u.id AS display_id FROM users u JOIN orders o ON o.user_id = u.id "
             + "WHERE u.active = true GROUP BY u.id, u.active HAVING COUNT(o.id) > 1 ORDER BY u.id";
-        Expect.sql(POSTGRESQL).column("u.id", "o.user_id", "u.active", "o.id")
-            .noColumn("display_id").build().assertMatches(sql);
+        Expect.sql(POSTGRESQL).column("u.id", "o.user_id", "u.active", "o.id").noColumn("display_id").build().assertMatches(sql);
         Expect.sql(POSTGRESQL).column("id").build().assertMatches(sql);
         assertFalse(Expect.sql(POSTGRESQL).column("x.id").build().matches(sql));
         assertFalse(Expect.sql(POSTGRESQL).column("name").build().matches("SELECT * FROM users"));
@@ -69,8 +78,7 @@ class FragmentExpectationsTest {
 
     @Test
     void columnsFollowIdentifierRulesAndIncludeNestedQueries() {
-        var sql = "WITH c AS (SELECT u.id FROM users u) SELECT c.id FROM c "
-            + "WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = c.id)";
+        var sql = "WITH c AS (SELECT u.id FROM users u) SELECT c.id FROM c " + "WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = c.id)";
         Expect.sql(POSTGRESQL).column("U.ID", "o.user_id").build().assertMatches(sql);
         assertFalse(Expect.sql(POSTGRESQL).noColumn("o.user_id").build().matches(sql));
         assertFalse(Expect.sql(POSTGRESQL).column("\"U\".id").build().matches(sql));
@@ -88,10 +96,8 @@ class FragmentExpectationsTest {
 
     @Test
     void joinsIncludeUsingNaturalCrossAndNestedQueries() {
-        var sql = "SELECT q.id FROM (SELECT u.id FROM users u JOIN orders o USING (id) "
-            + "NATURAL JOIN payments CROSS JOIN audit) q";
-        Expect.sql(POSTGRESQL).join("JOIN orders o USING (id)", "NATURAL JOIN payments", "CROSS JOIN audit")
-            .build().assertMatches(sql);
+        var sql = "SELECT q.id FROM (SELECT u.id FROM users u JOIN orders o USING (id) " + "NATURAL JOIN payments CROSS JOIN audit) q";
+        Expect.sql(POSTGRESQL).join("JOIN orders o USING (id)", "NATURAL JOIN payments", "CROSS JOIN audit").build().assertMatches(sql);
         assertFalse(Expect.sql(POSTGRESQL).noJoin().build().matches(sql));
         assertFalse(Expect.sql(POSTGRESQL).noJoin("JOIN orders o USING (id)").build().matches(sql));
         Expect.sql(POSTGRESQL).noJoin().build().assertMatches("SELECT id FROM users");
@@ -100,10 +106,10 @@ class FragmentExpectationsTest {
     @Test
     void whereComparesTheEntireOuterPredicateRatherThanSubtrees() {
         Expect.sql(POSTGRESQL).where("u.active = TRUE /* expected */").build().assertMatches(SQL);
-        assertFalse(Expect.sql(POSTGRESQL).where("u.active = true").build()
-            .matches("SELECT u.id FROM users u WHERE u.active = true AND u.id = 1"));
-        assertFalse(Expect.sql(POSTGRESQL).where("u.active = true", "u.id = 1").build()
-            .matches("SELECT u.id FROM users u WHERE u.active = true AND u.id = 1"));
+        assertFalse(Expect.sql(POSTGRESQL).where("u.active = true").build().matches("SELECT u.id FROM users u WHERE u.active = true AND u.id = 1"));
+        assertFalse(
+            Expect.sql(POSTGRESQL).where("u.active = true", "u.id = 1").build().matches("SELECT u.id FROM users u WHERE u.active = true AND u.id = 1")
+        );
         Expect.sql(POSTGRESQL).where("u.active = true", "u.active = true").build().assertMatches(SQL);
         Expect.sql(POSTGRESQL).noWhere("u.active = false").build().assertMatches(SQL);
     }
@@ -114,8 +120,7 @@ class FragmentExpectationsTest {
         Expect.sql(POSTGRESQL).where("id = 1").noWhere("active = true").build().assertMatches(sql);
         assertFalse(Expect.sql(POSTGRESQL).where("active = true").build().matches(sql));
         assertFalse(Expect.sql(POSTGRESQL).noWhere().build().matches(sql));
-        Expect.sql(POSTGRESQL).noWhere().build()
-            .assertMatches("SELECT q.id FROM (SELECT id FROM users WHERE active = true) q");
+        Expect.sql(POSTGRESQL).noWhere().build().assertMatches("SELECT q.id FROM (SELECT id FROM users WHERE active = true) q");
         Expect.sql(POSTGRESQL).noWhere("id = 1").build().assertMatches("SELECT id FROM users");
     }
 
@@ -137,22 +142,20 @@ class FragmentExpectationsTest {
     @ParameterizedTest
     @ValueSource(strings = {"ansi", "postgresql", "mysql", "sqlserver", "oracle"})
     void fragmentsUseEachConfiguredDialect(String dialect) {
-        Expect.sql(SqlDialectId.of(dialect)).table("users u", "orders o")
-            .column("U.ID", "O.USER_ID").join("JOIN orders o ON o.user_id = u.id")
-            .where("u.active = 1").noColumn("secret").noTable("legacy")
-            .build().assertMatches("SELECT u.id FROM users u JOIN orders o ON o.user_id = u.id WHERE u.active = 1");
-    }
-
-    private static Stream<BiFunction<Expect.Builder, String[], Expect.Builder>> fragmentMethods() {
-        return Stream.of(Expect.Builder::table, Expect.Builder::noTable,
-            Expect.Builder::column, Expect.Builder::noColumn, Expect.Builder::join,
-            Expect.Builder::noJoin, Expect.Builder::where, Expect.Builder::noWhere);
+        Expect.sql(SqlDialectId.of(dialect))
+            .table("users u", "orders o")
+            .column("U.ID", "O.USER_ID")
+            .join("JOIN orders o ON o.user_id = u.id")
+            .where("u.active = 1")
+            .noColumn("secret")
+            .noTable("legacy")
+            .build()
+            .assertMatches("SELECT u.id FROM users u JOIN orders o ON o.user_id = u.id WHERE u.active = 1");
     }
 
     @ParameterizedTest
     @MethodSource("fragmentMethods")
-    void varargsRejectEmptyAndNullInputsWithoutPartiallyMutatingTheBuilder(
-        BiFunction<Expect.Builder, String[], Expect.Builder> method) {
+    void varargsRejectEmptyAndNullInputsWithoutPartiallyMutatingTheBuilder(BiFunction<Expect.Builder, String[], Expect.Builder> method) {
         var builder = Expect.sql(POSTGRESQL);
         assertThrows(IllegalArgumentException.class, () -> method.apply(builder, new String[0]));
         assertThrows(NullPointerException.class, () -> method.apply(builder, null));
@@ -162,8 +165,7 @@ class FragmentExpectationsTest {
 
     @ParameterizedTest
     @MethodSource("fragmentMethods")
-    void expectedFragmentParsingIsDeferredAndNegativeChecksCannotHideInvalidSql(
-        BiFunction<Expect.Builder, String[], Expect.Builder> method) {
+    void expectedFragmentParsingIsDeferredAndNegativeChecksCannotHideInvalidSql(BiFunction<Expect.Builder, String[], Expect.Builder> method) {
         var expectation = method.apply(Expect.sql(POSTGRESQL), new String[]{"SELECT FROM"}).build();
         assertEquals("PARSE_ERROR", expectation.evaluate("bad actual sql").mismatches().getFirst().code());
         assertThrows(IllegalArgumentException.class, () -> expectation.evaluate("SELECT 1"));
@@ -171,8 +173,7 @@ class FragmentExpectationsTest {
 
     @Test
     void negativeChecksNeverSucceedOnInvalidActualSql() {
-        var expectation = Expect.sql(POSTGRESQL).noTable("users").noColumn("id")
-            .noJoin().noWhere().build();
+        var expectation = Expect.sql(POSTGRESQL).noTable("users").noColumn("id").noJoin().noWhere().build();
         assertFalse(expectation.matches("broken SQL"));
         assertThrows(AssertionError.class, () -> expectation.assertMatches("broken SQL"));
     }
@@ -186,5 +187,18 @@ class FragmentExpectationsTest {
         builder.noTable("users");
         expectation.assertMatches(SQL);
         assertFalse(builder.build().matches(SQL));
+    }
+
+    private static Stream<BiFunction<Expect.Builder, String[], Expect.Builder>> fragmentMethods() {
+        return Stream.of(
+            Expect.Builder::table,
+            Expect.Builder::noTable,
+            Expect.Builder::column,
+            Expect.Builder::noColumn,
+            Expect.Builder::join,
+            Expect.Builder::noJoin,
+            Expect.Builder::where,
+            Expect.Builder::noWhere
+        );
     }
 }

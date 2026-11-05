@@ -39,10 +39,9 @@ public interface Match {
         if (matches()) {
             return "SQL matched all expectations.";
         }
-        return "SQL did not match expectations:\n" + mismatches().stream()
-            .map(mismatch -> "- [" + mismatch.code() + "] "
-                + (mismatch.path().isEmpty() ? "" : mismatch.path() + ": ")
-                + mismatch.message())
+        return "SQL did not match expectations:\n" + mismatches()
+            .stream()
+            .map(mismatch -> "- [" + mismatch.code() + "] " + (mismatch.path().isEmpty() ? "" : mismatch.path() + ": ") + mismatch.message())
             .collect(Collectors.joining("\n"));
     }
 

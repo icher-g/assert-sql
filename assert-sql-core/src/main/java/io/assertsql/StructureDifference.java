@@ -46,8 +46,7 @@ final class StructureDifference {
     }
 
     private static Mismatch mismatch(String path, Object expected, Object actual) {
-        return new Mismatch("STRUCTURE_MISMATCH", path,
-            "Expected <" + summarize(expected) + "> but was <" + summarize(actual) + ">.");
+        return new Mismatch("STRUCTURE_MISMATCH", path, "Expected <" + summarize(expected) + "> but was <" + summarize(actual) + ">.");
     }
 
     private static String summarize(Object value) {
