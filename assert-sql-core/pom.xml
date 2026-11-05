@@ -45,6 +45,31 @@
             <artifactId>sqm-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-render-ansi</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-render-postgresql</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-render-mysql</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-render-sqlserver</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-render-oracle</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

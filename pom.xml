@@ -43,6 +43,7 @@
 
     <modules>
         <module>assert-sql-core</module>
+        <module>assert-sql-examples</module>
     </modules>
 
     <properties>
@@ -51,6 +52,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <junit.version>5.10.2</junit.version>
         <sqm.version>0.5.0</sqm.version>
+        <maven.deploy.skip>false</maven.deploy.skip>
     </properties>
 
     <dependencyManagement>
@@ -158,6 +160,7 @@
                         <configuration>
                             <signer>bc</signer>
                             <bestPractices>true</bestPractices>
+                            <skip>${maven.deploy.skip}</skip>
                         </configuration>
                         <executions>
                             <execution>
@@ -176,6 +179,7 @@
                             <publishingServerId>central</publishingServerId>
                             <autoPublish>false</autoPublish>
                             <waitUntil>validated</waitUntil>
+                            <skipPublishing>${maven.deploy.skip}</skipPublishing>
                             <skipUpload>${central.skipUpload}</skipUpload>
                         </configuration>
                     </plugin>

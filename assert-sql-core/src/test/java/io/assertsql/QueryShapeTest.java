@@ -76,7 +76,7 @@ class QueryShapeTest {
         Expect.sql(POSTGRESQL).exactProjection("u.*").build().assertMatches("SELECT u.* FROM users u");
         var result = expectation.evaluate("SELECT name AS display, id FROM users");
         assertEquals("PROJECTION_MISMATCH", result.mismatches().getFirst().code());
-        assertTrue(result.mismatches().getFirst().path().contains("[0]"));
+        assertEquals("", result.mismatches().getFirst().path());
     }
 
     @Test
