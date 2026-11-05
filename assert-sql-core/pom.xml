@@ -17,6 +17,31 @@
     <dependencies>
         <dependency>
             <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-parser-ansi</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-parser-postgresql</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-parser-mysql</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-parser-sqlserver</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
+            <artifactId>sqm-parser-oracle</artifactId>
+            <version>${sqm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.icher-g</groupId>
             <artifactId>sqm-core</artifactId>
         </dependency>
         <dependency>
