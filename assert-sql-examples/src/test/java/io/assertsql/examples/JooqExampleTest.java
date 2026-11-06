@@ -12,6 +12,40 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JooqExampleTest {
     @Test
+    void assertsTheDerivedTableAndCorrelatedExistsIndependently() {
+        /* SQL inspected (formatted for readability):
+         * SELECT page.id, page.name
+         * FROM (SELECT u.id, u.name FROM users AS u WHERE u.active = true) AS page
+         * WHERE EXISTS (SELECT 1 FROM audit AS x WHERE x.user_id = page.id)
+         */
+        var sql = JooqUserQueries.activeUserPageWithAudit().getSQL(ParamType.NAMED);
+        var expectation = Expect.sql(POSTGRESQL)
+            .as("active users with audit records")
+            .outer(query -> query.exactProjection("page.id", "page.name").noTable("users", "audit"))
+            .derived("page", query -> query
+                .table("users u")
+                .exactProjection("u.id", "u.name")
+                .where("u.active = true")
+                .noTable("audit")
+            )
+            .exists(query -> query
+                .table("audit x")
+                .where("x.user_id = page.id")
+                .column("x.user_id", "page.id")
+                .noTable("users")
+                .exactProjection("1")
+            )
+            .build();
+        expectation.assertMatches(sql);
+
+        // The sibling EXISTS body cannot satisfy a table check on the derived query.
+        var wrongScope = Expect.sql(POSTGRESQL).derived("page", query -> query.table("audit")).build();
+        var error = assertThrows(AssertionError.class, () -> wrongScope.assertMatches(sql));
+        assertTrue(error.getMessage().contains("derived table \"page\""));
+        assertTrue(error.getMessage().contains("TABLE_NOT_REFERENCED"));
+    }
+
+    @Test
     void separatesCteAndOuterReferencesInGeneratedSql() {
         /* SQL inspected (formatted for readability):
          * WITH active_users(id) AS (

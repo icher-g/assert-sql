@@ -1,7 +1,7 @@
 # Testing application-generated SQL
 
 These executable examples accompany [story #3](https://github.com/icher-g/assert-sql/issues/3)
-through [story #5](https://github.com/icher-g/assert-sql/issues/5). They test SQL produced
+through [story #6](https://github.com/icher-g/assert-sql/issues/6). They test SQL produced
 by application code and capture SQL from real Hibernate HQL execution using Assert SQL's public API.
 
 ## Run
@@ -119,6 +119,42 @@ The same test verifies that `.outer(query -> query.table("users"))` fails with
 `TABLE_NOT_REFERENCED` and an `outer query` location: a table inside the CTE cannot
 satisfy that outer-only requirement. Captured/rendered SQL is passed unchanged to
 Assert SQL. See the root README for the complete scope contract and nested CTE rules.
+
+### Derived-table and correlated EXISTS scopes
+
+`JooqUserQueries.activeUserPageWithAudit()` generates a derived table and a
+correlated EXISTS predicate through jOOQ:
+
+```sql
+SELECT page.id, page.name
+FROM (SELECT u.id, u.name FROM users AS u WHERE u.active = true) AS page
+WHERE EXISTS (SELECT 1 FROM audit AS x WHERE x.user_id = page.id)
+```
+
+`assertsTheDerivedTableAndCorrelatedExistsIndependently` in
+[JooqExampleTest](src/test/java/io/assertsql/examples/JooqExampleTest.java) builds
+both scope declarations inline:
+
+```java
+var sql = JooqUserQueries.activeUserPageWithAudit().getSQL(ParamType.NAMED);
+Expect.sql(POSTGRESQL)
+    .derived("page", query -> query.table("users u").where("u.active = true").noTable("audit"))
+    .exists(query -> query.table("audit x").where("x.user_id = page.id").column("page.id").noTable("users"))
+    .build()
+    .assertMatches(sql);
+```
+
+The derived-table contract cannot be satisfied by the sibling audit query. The
+EXISTS contract includes the correlated `page.id` reference directly from its
+original SQM body; no catalog resolution or proof of runtime isolation is implied.
+The same test verifies a standard assertion failure when `table("audit")` is
+incorrectly required inside the derived-table scope.
+
+Each selector targets one query. Missing or duplicate derived aliases fail, and
+an unindexed EXISTS selector fails when several direct EXISTS/NOT EXISTS predicates
+are present. `.exists(index, ...)` selects one by its zero-based SQM traversal
+index. Nested bodies require explicit nested selectors. See the root README for
+the complete ordering, negation, and ambiguity rules.
 
 ### Rendering and SQM compatibility
 

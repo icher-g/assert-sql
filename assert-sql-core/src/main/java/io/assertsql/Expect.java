@@ -81,7 +81,8 @@ public interface Expect {
      * be absent. Arguments are defensively copied during declaration and parsed
      * only during evaluation.
      * Recursive-search descriptions below apply outside scope blocks. Inside
-     * {@link Builder#outer(Consumer)} and {@link Builder#cte(String, Consumer)},
+     * {@link Builder#outer(Consumer)}, {@link Builder#cte(String, Consumer)},
+     * {@link Builder#derived(String, Consumer)}, and {@link Builder#exists(Consumer)},
      * reference, join, wildcard, and parameter searches stay at the selected level.
      * Set-operation terms belong to that level, excluding their nested queries and
      * WITH definitions. Complete clause comparisons and custom checks keep the
@@ -125,6 +126,49 @@ public interface Expect {
          * @throws IllegalStateException if the block declares no checks
          */
         Builder cte(String name, Consumer<Builder> declaration);
+
+        /**
+         * Declares checks on the query of a derived table at the current query level, selected by alias.
+         * FROM, JOIN, and supported LATERAL/APPLY wrappers are searched using SQM's model; nested query
+         * bodies and WITH definitions are excluded. Alias matching follows table identifier rules.
+         * Exactly one derived table must match, including when the block contains only negative checks.
+         * The callback is snapshotted as in {@link #outer(Consumer)} and can select deeper query scopes.
+         *
+         * @param alias one unqualified SQL identifier, optionally quoted; parsed during evaluation
+         * @param declaration non-null callback declaring at least one check
+         * @return this parent builder
+         * @throws IllegalArgumentException if the alias is blank, or invalid when parsed during evaluation
+         * @throws IllegalStateException if the block declares no checks
+         */
+        Builder derived(String alias, Consumer<Builder> declaration);
+
+        /**
+         * Declares checks on the single direct EXISTS/NOT EXISTS subquery at the current query level.
+         * Missing or multiple predicates produce a scope diagnostic; no sibling or descendant query
+         * is selected implicitly. This selects the subquery and does not assert predicate negation.
+         * Use {@link #exists(int, Consumer)} when more than one direct EXISTS predicate is present.
+         *
+         * @param declaration non-null callback declaring at least one check
+         * @return this parent builder
+         * @throws IllegalStateException if the block declares no checks
+         */
+        Builder exists(Consumer<Builder> declaration);
+
+        /**
+         * Declares checks on one direct EXISTS/NOT EXISTS subquery by its zero-based occurrence index.
+         * Candidates follow SQM visitor order at the current query level, not SQL text offsets.
+         * In a SELECT, projection items precede FROM/JOIN and WHERE; set terms follow their model order. Nested
+         * subqueries and WITH definitions are excluded. The index counts EXISTS and NOT EXISTS alike.
+         * An out-of-range index fails selection even for negative expectations. SQL is parsed once;
+         * selected query bodies retain the complete original SQM model for custom and clause checks.
+         *
+         * @param index non-negative index in the direct EXISTS predicate sequence
+         * @param declaration non-null callback declaring at least one check
+         * @return this parent builder
+         * @throws IllegalArgumentException if the index is negative
+         * @throws IllegalStateException if the block declares no checks
+         */
+        Builder exists(int index, Consumer<Builder> declaration);
 
         /**
          * Requires a query, including WITH queries and SELECT set operations.
