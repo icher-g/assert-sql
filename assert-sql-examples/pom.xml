@@ -10,11 +10,13 @@
     </parent>
     <artifactId>assert-sql-examples</artifactId>
     <name>Assert SQL (examples)</name>
-    <description>Database-free executable examples of testing application-generated SQL.</description>
+    <description>Executable SQL assertion examples, including Hibernate with an embedded H2 database.</description>
     <properties>
         <maven.install.skip>true</maven.install.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
         <jooq.version>3.19.39</jooq.version>
+        <hibernate.version>6.6.59.Final</hibernate.version>
+        <h2.version>2.4.240</h2.version>
         <jakarta.xml.bind.version>4.0.4</jakarta.xml.bind.version>
     </properties>
     <dependencies>
@@ -37,8 +39,20 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>${hibernate.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

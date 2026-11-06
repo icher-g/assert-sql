@@ -9,7 +9,8 @@ and JaCoCo coverage. Test results and HTML/XML coverage reports are saved as a
 GitHub Actions artifact for 14 days. No database services or external coverage
 account are required.
 
-The normal reactor includes the database-free `assert-sql-examples` tests.
+The normal reactor includes `assert-sql-examples`, including real Hibernate queries
+against an embedded in-memory H2 database. No external database service is needed.
 That module is test-only: `maven.install.skip=true` skips its local installation,
 and `maven.deploy.skip=true` excludes it from GitHub Packages,
 GPG signing, and Central staging. The parent and core remain the published artifacts.
