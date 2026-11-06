@@ -77,7 +77,15 @@ class OrExpectTest {
         assertThrows(IllegalArgumentException.class, Expect::or);
         assertThrows(NullPointerException.class, () -> Expect.or((Expect[]) null));
         assertThrows(NullPointerException.class, () -> Expect.or((Expect) null));
-        assertThrows(NullPointerException.class, () -> Expect.or(Expect.sql(POSTGRESQL).select().build()).evaluate(null));
+        assertThrows(
+            NullPointerException.class,
+            () -> Expect.or(
+                Expect.sql(POSTGRESQL)
+                    .select()
+                    .build()
+            )
+                .evaluate((String) null)
+        );
     }
 
     @Test

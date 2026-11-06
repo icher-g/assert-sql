@@ -186,7 +186,7 @@ class JooqExampleTest {
             .positionalParameterCount(1)
             .build();
         expectation.assertMatches(query.getSQL(ParamType.INDEXED));
-        // Bind values come from jOOQ, not from SQL parsing. Assert SQL currently checks only the placeholders.
+        // This expectation checks placeholders only. BindingsExampleTest also inspects caller-supplied values from jOOQ.
         assertEquals(List.of(42L), query.getBindValues());
     }
 }

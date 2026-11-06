@@ -54,6 +54,16 @@ public interface Expect {
     Match evaluate(String actualSql);
 
     /**
+     * Evaluates SQL and explicitly supplied bindings without executing SQL.
+     * Structural checks inspect the same parsed statement; bindings are checked only when declared.
+     *
+     * @param input non-null SQL input
+     * @return an immutable result containing all applicable diagnostics
+     * @throws IllegalArgumentException if expected SQL or a declared fragment is invalid
+     */
+    Match evaluate(ParameterizedSql input);
+
+    /**
      * Evaluates the expectation.
      *
      * @param actualSql non-null SQL text
@@ -64,6 +74,16 @@ public interface Expect {
     }
 
     /**
+     * Evaluates SQL and supplied bindings.
+     *
+     * @param input non-null SQL input
+     * @return whether all requirements matched
+     */
+    default boolean matches(ParameterizedSql input) {
+        return evaluate(Objects.requireNonNull(input, "input")).matches();
+    }
+
+    /**
      * Evaluates the expectation and throws on mismatch.
      *
      * @param actualSql non-null SQL text
@@ -71,6 +91,16 @@ public interface Expect {
      */
     default void assertMatches(String actualSql) {
         evaluate(Objects.requireNonNull(actualSql, "actualSql")).assertMatches();
+    }
+
+    /**
+     * Evaluates SQL and supplied bindings and throws on mismatch.
+     *
+     * @param input non-null SQL input
+     * @throws AssertionError if SQL or bindings do not match
+     */
+    default void assertMatches(ParameterizedSql input) {
+        evaluate(Objects.requireNonNull(input, "input")).assertMatches();
     }
 
     /**
@@ -119,11 +149,11 @@ public interface Expect {
          * selected body, as in {@link #outer(Consumer)}; its complete model is retained for clause
          * comparisons, structural equality, custom checks, and further CTE selection.
          *
-         * @param name one unqualified SQL identifier, optionally quoted; parsed during evaluation
+         * @param name        one unqualified SQL identifier, optionally quoted; parsed during evaluation
          * @param declaration non-null callback, snapshotted when it returns
          * @return this parent builder
          * @throws IllegalArgumentException if the name is blank, or invalid when parsed during evaluation
-         * @throws IllegalStateException if the block declares no checks
+         * @throws IllegalStateException    if the block declares no checks
          */
         Builder cte(String name, Consumer<Builder> declaration);
 
@@ -134,11 +164,11 @@ public interface Expect {
          * Exactly one derived table must match, including when the block contains only negative checks.
          * The callback is snapshotted as in {@link #outer(Consumer)} and can select deeper query scopes.
          *
-         * @param alias one unqualified SQL identifier, optionally quoted; parsed during evaluation
+         * @param alias       one unqualified SQL identifier, optionally quoted; parsed during evaluation
          * @param declaration non-null callback declaring at least one check
          * @return this parent builder
          * @throws IllegalArgumentException if the alias is blank, or invalid when parsed during evaluation
-         * @throws IllegalStateException if the block declares no checks
+         * @throws IllegalStateException    if the block declares no checks
          */
         Builder derived(String alias, Consumer<Builder> declaration);
 
@@ -162,11 +192,11 @@ public interface Expect {
          * An out-of-range index fails selection even for negative expectations. SQL is parsed once;
          * selected query bodies retain the complete original SQM model for custom and clause checks.
          *
-         * @param index non-negative index in the direct EXISTS predicate sequence
+         * @param index       non-negative index in the direct EXISTS predicate sequence
          * @param declaration non-null callback declaring at least one check
          * @return this parent builder
          * @throws IllegalArgumentException if the index is negative
-         * @throws IllegalStateException if the block declares no checks
+         * @throws IllegalStateException    if the block declares no checks
          */
         Builder exists(int index, Consumer<Builder> declaration);
 
@@ -432,6 +462,81 @@ public interface Expect {
          * @return this builder
          */
         Builder positionalParameterCount(int count);
+
+        /**
+         * Requires a referenced named slot and a supplied value equal to the expected value.
+         * Extra bindings and unrelated missing bindings are permitted unless {@link #matchAllParameters()} is declared.
+         * Names are canonical and case-sensitive. Explicit null is distinct from absence.
+         * Expected arrays and Date values are snapshotted now; see {@link ParameterizedSql} for ownership and equality.
+         * Diagnostics never include expected or supplied values. SQL-only input fails with BINDINGS_UNAVAILABLE.
+         *
+         * @param name  canonical parameter name without a prefix
+         * @param value expected value, including null
+         * @return this builder
+         */
+        Builder binding(String name, Object value);
+
+        /**
+         * Requires a supplied value at a referenced anonymous slot, using {@link #binding(String, Object)} value rules.
+         * Positions follow SQM collector traversal over the full statement, not driver bind order or source offsets.
+         * Named and ordinal parameters do not consume positions. Scoped blocks retain the full-statement numbering.
+         *
+         * @param position positive one-based anonymous position
+         * @param value    expected value, including null
+         * @return this builder
+         */
+        Builder positionalBinding(int position, Object value);
+
+        /**
+         * Requires a supplied value at a referenced explicit ordinal slot, using {@link #binding(String, Object)} value rules.
+         * Repeated SQL indices share a binding; sparse indices do not imply bindings for skipped indices.
+         *
+         * @param index positive index written in SQL, such as 2 for $2
+         * @param value expected value, including null
+         * @return this builder
+         */
+        Builder ordinalBinding(int index, Object value);
+
+        /**
+         * Forbids a supplied named binding, whether or not SQL references it. A supplied null still fails.
+         * Requires valid SQL and explicit binding containers; SQL-only input fails rather than proving absence.
+         * Scope blocks still inspect the full supplied binding container.
+         *
+         * @param name canonical parameter name
+         * @return this builder
+         */
+        Builder noBinding(String name);
+
+        /**
+         * Forbids a supplied anonymous position, following {@link #noBinding(String)} absence rules.
+         *
+         * @param position positive full-statement anonymous position
+         * @return this builder
+         */
+        Builder noPositionalBinding(int position);
+
+        /**
+         * Forbids a supplied explicit ordinal slot, following {@link #noBinding(String)} absence rules.
+         *
+         * @param index positive SQL ordinal index
+         * @return this builder
+         */
+        Builder noOrdinalBinding(int index);
+
+        /**
+         * Requires every actual SQL parameter slot to be covered by a positive parameter or binding expectation.
+         * Declarations in this builder and its nested scopes contribute coverage; negative and occurrence-count
+         * checks do not. Names and ordinals identify distinct slots; each anonymous occurrence has its own slot.
+         * Without positive declarations, requires no parameters. Prefer parameterCount(0) to express that directly.
+         * SQL-only evaluation is supported. Value checks still require supplied bindings. When explicit binding
+         * containers are supplied, an unscoped matchAllParameters also rejects missing or unused bindings.
+         * In a query scope, coverage is checked only at the selected level, retaining global anonymous positions;
+         * supplied bindings elsewhere in the input are allowed. Invalid SQL still fails before any checks run.
+         * Placement in the fluent chain does not matter; build snapshots the complete declaration.
+         *
+         * @return this builder
+         */
+        Builder matchAllParameters();
 
         /**
          * Requires SQM model equality with the complete outer WHERE predicate.

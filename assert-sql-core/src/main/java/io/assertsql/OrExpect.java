@@ -21,12 +21,17 @@ final class OrExpect implements Expect {
 
     @Override
     public Match evaluate(String actualSql) {
-        Objects.requireNonNull(actualSql, "actualSql");
+        return evaluate(ParameterizedSql.of(Objects.requireNonNull(actualSql, "actualSql")));
+    }
+
+    @Override
+    public Match evaluate(ParameterizedSql input) {
+        Objects.requireNonNull(input, "input");
         var mismatches = new ArrayList<Mismatch>();
         mismatches.add(new Mismatch("OR_NOT_MATCHED", "or", "None of the alternatives matched."));
         for (int i = 0; i < alternatives.size(); i++) {
             var alternative = alternatives.get(i);
-            var result = alternative.evaluate(actualSql);
+            var result = alternative.evaluate(input);
             if (result.matches()) {
                 return Match.of(List.of());
             }

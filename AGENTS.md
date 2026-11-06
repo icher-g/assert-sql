@@ -4,7 +4,7 @@ These rules apply throughout the Assert SQL repository. Follow them for new and 
 
 ## Line length and wrapping
 
-- Keep a statement, method signature, or expression on one line when it fits within 150 characters, including indentation.
+- Keep a statement, method signature, or expression on one line when it fits within 150 characters, including indentation, except for fluent call chains.
 - Do not introduce line breaks merely to satisfy a shorter formatter default.
 - Preserve the normal structure of classes, methods, control-flow blocks, and documentation; the line-length rule does not mean compressing blocks onto one line.
 - When an expression exceeds 150 characters and needs wrapping, format the complete expression for readability instead of breaking it at an arbitrary character position.
@@ -32,6 +32,21 @@ Avoid arbitrary wrapping that leaves several nested calls and arguments crowded 
 ```java
 return satisfies(outerClause(statement -> result(literalCount(ModelInspector.offset(statement), count),
     "OFFSET_MISMATCH", "statement.offset", "Expected a literal outer offset of " + count + ".")));
+```
+
+## Fluent calls
+
+- In fluent API chains, including builders and stream pipelines, put every call after the initial call on its own line.
+- This rule takes precedence over the 150-character rule, even when the entire chain would fit on one line.
+- Include terminal calls such as `build()`, `evaluate(...)`, `matches(...)`, and `assertMatches(...)` on their own lines.
+- Apply the same formatting to chains inside arguments, lambdas, and nested builder callbacks.
+- Indent chained calls by four spaces from the start of the expression, keeping calls at the same chain level aligned.
+
+```java
+var expectation = Expect.sql(POSTGRESQL)
+    .binding("tenantId", 42L)
+    .matchAllParameters()
+    .build();
 ```
 
 ## Method order

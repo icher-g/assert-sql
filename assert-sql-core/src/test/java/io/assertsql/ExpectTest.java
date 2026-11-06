@@ -40,9 +40,9 @@ class ExpectTest {
             calls.incrementAndGet();
             return List.of();
         }).build();
-        assertThrows(NullPointerException.class, () -> expectation.evaluate(null));
-        assertThrows(NullPointerException.class, () -> expectation.matches(null));
-        assertThrows(NullPointerException.class, () -> expectation.assertMatches(null));
+        assertThrows(NullPointerException.class, () -> expectation.evaluate((String) null));
+        assertThrows(NullPointerException.class, () -> expectation.matches((String) null));
+        assertThrows(NullPointerException.class, () -> expectation.assertMatches((String) null));
         assertEquals(0, calls.get());
     }
 }

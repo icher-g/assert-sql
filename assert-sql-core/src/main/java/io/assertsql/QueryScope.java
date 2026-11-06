@@ -76,14 +76,14 @@ record QueryScope(Statement statement, String label, Mismatch failure) {
         return selectedExists(matches.get(index), index);
     }
 
-    List<Mismatch> evaluate(List<Check> checks, String description) {
+    List<Mismatch> evaluate(List<ParameterizedCheck> checks, String description, BindingContext bindings) {
         var scope = description == null ? label : label + " [" + description + "]";
         if (failure != null) {
             return List.of(new Mismatch(failure.code(), scope, failure.message()));
         }
         var mismatches = new ArrayList<Mismatch>();
         for (var check : checks) {
-            for (var mismatch : List.copyOf(check.evaluate(statement))) {
+            for (var mismatch : List.copyOf(check.evaluate(statement, bindings))) {
                 var path = mismatch.path();
                 if (path.equals("statement")) {
                     path = "";
