@@ -1,7 +1,7 @@
 # Testing application-generated SQL
 
 These executable examples accompany [story #3](https://github.com/icher-g/assert-sql/issues/3)
-through [story #7](https://github.com/icher-g/assert-sql/issues/7). They test SQL produced
+through [story #8](https://github.com/icher-g/assert-sql/issues/8). They test SQL produced
 by application code and capture SQL from real Hibernate HQL execution using Assert SQL's public API.
 
 ## Run
@@ -24,6 +24,36 @@ The example pins jOOQ Open Source Edition **3.19.39** and the optional JAXB API
 **4.0.4** needed by jOOQ's Settings annotations at compile time. Both have test
 scope, as do Hibernate ORM **6.6.59.Final**, H2 **2.4.240**, Assert SQL, and JUnit Jupiter.
 Hibernate and H2 are confined to this example module and do not enter the core runtime.
+
+## Supplied binding values without execution
+
+[BindingsExampleTest](src/test/java/io/assertsql/examples/BindingsExampleTest.java)
+inspects an actual jOOQ-generated INSERT and its two supplied values:
+
+```sql
+INSERT INTO users (tenant_id, name) VALUES (:tenantId, :userName)
+```
+
+The parameter-only example checks `parameter("tenantId", "userName")` followed by
+`matchAllParameters()` against generated SQL, without supplying any binding values.
+It requires all actual query slots to be covered by those expectations.
+
+The named-value example takes non-inline values directly from `query.getParams()` and
+passes them with named SQL to `ParameterizedSql.named(...)`. Its inline expectation checks
+`binding("tenantId", 42L)`, `binding("userName", "Ada")`, and `.matchAllParameters()`
+for complete SQL slot coverage and supplied bindings. Generating the same INSERT with `"Grace"` produces a
+`BINDING_MISMATCH` at `bindings.named[userName]` without printing either value.
+
+The anonymous example renders `VALUES (?, ?)` and passes `query.getBindValues()`
+to `ParameterizedSql.positional(...)`. It checks both one-based positions and demonstrates
+that reversing the values fails while the SQL remains identical. SQM traversal
+matches jOOQ's bind order for this VALUES clause. It can differ for pagination or
+TOP expressions; raw tool lists are usable only where the orders agree. See
+[binding contracts and ownership](../README.md#assert-supplied-parameter-bindings)
+for anonymous ordering, ordinal indices, repeated slots, nulls, and comparison rules.
+
+The tests render SQL and extract values without a connection or execution. These
+checks are available from `assert-sql-core` without the validation module or JDBC.
 
 ## Catalog validation without a database
 
@@ -112,7 +142,7 @@ assertTrue(result.matches(), result::describe);
 The indexed SQL example uses `getSQL(ParamType.INDEXED)` and checks its positional
 placeholder count. Values are obtained separately from jOOQ's `getBindValues()`
 and checked with JUnit. Assert SQL cannot recover binding values from SQL text;
-native binding assertions are tracked separately in story #8.
+the supplied-value workflow above uses the binding API to assert those separate values.
 
 ### CTE and outer-query scopes
 

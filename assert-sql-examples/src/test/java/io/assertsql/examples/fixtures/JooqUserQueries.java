@@ -1,6 +1,7 @@
 package io.assertsql.examples.fixtures;
 
 import org.jooq.JoinType;
+import org.jooq.Query;
 import org.jooq.Select;
 import org.jooq.conf.RenderQuotedNames;
 import org.jooq.conf.Settings;
@@ -42,6 +43,22 @@ public final class JooqUserQueries {
             .orderBy(createdAt.desc(), userId.asc())
             .limit(inline(pageSize))
             .offset(inline(offset));
+    }
+
+    /**
+     * Generates an INSERT with two named values, available separately from the rendered SQL.
+     * @param tenantId tenant binding value
+     * @param userName user-name binding value
+     * @return an unexecuted query exposing its named parameters and ordered bind values
+     */
+    public static Query newUser(long tenantId, String userName) {
+        var context = DSL.using(
+            POSTGRES,
+            new Settings()
+                .withRenderQuotedNames(RenderQuotedNames.EXPLICIT_DEFAULT_UNQUOTED)
+        );
+        return context.insertInto(table(name("users")), field(name("tenant_id"), Long.class), field(name("name"), String.class))
+            .values(param("tenantId", tenantId), param("userName", userName));
     }
 
     /**

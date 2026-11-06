@@ -145,7 +145,12 @@ class EvaluationTest {
         assertThrows(NullPointerException.class, () -> expectation.table((String[]) null));
         assertThrows(NullPointerException.class, () -> expectation.structurallyEquals(null));
         assertThrows(NullPointerException.class, () -> expectation.satisfies(null));
-        assertThrows(NullPointerException.class, () -> expectation.select().build().evaluate(null));
+        assertThrows(
+            NullPointerException.class,
+            () -> expectation.select()
+                .build()
+                .evaluate((String) null)
+        );
     }
 
     @Test

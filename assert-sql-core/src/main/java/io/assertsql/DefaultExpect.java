@@ -18,9 +18,11 @@ import io.sqm.render.sqlserver.spi.SqlServerDialect;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -30,9 +32,9 @@ import java.util.function.Supplier;
 final class DefaultExpect implements Expect {
     private final Supplier<Specs> specs;
     private final String description;
-    private final List<Function<ParseContext, Check>> requirements;
+    private final List<Function<ParseContext, ParameterizedCheck>> requirements;
 
-    private DefaultExpect(Supplier<Specs> specs, String description, List<Function<ParseContext, Check>> requirements) {
+    private DefaultExpect(Supplier<Specs> specs, String description, List<Function<ParseContext, ParameterizedCheck>> requirements) {
         this.specs = specs;
         this.description = description;
         this.requirements = List.copyOf(requirements);
@@ -51,9 +53,14 @@ final class DefaultExpect implements Expect {
 
     @Override
     public Match evaluate(String actualSql) {
-        Objects.requireNonNull(actualSql, "actualSql");
+        return evaluate(ParameterizedSql.of(Objects.requireNonNull(actualSql, "actualSql")));
+    }
+
+    @Override
+    public Match evaluate(ParameterizedSql input) {
+        Objects.requireNonNull(input, "input");
         var context = ParseContext.of(specs.get());
-        var actual = context.parse(Statement.class, actualSql);
+        var actual = context.parse(Statement.class, input.sql());
         var mismatches = new ArrayList<Mismatch>();
         if (!actual.ok()) {
             for (var problem : actual.problems()) {
@@ -62,9 +69,12 @@ final class DefaultExpect implements Expect {
         }
         else {
             // Prepare the full declaration before invoking any custom checks.
-            var checks = requirements.stream().map(requirement -> requirement.apply(context)).toList();
+            var checks = requirements.stream()
+                .map(requirement -> requirement.apply(context))
+                .toList();
+            var bindings = new BindingContext(input, actual.value());
             for (var check : checks) {
-                mismatches.addAll(List.copyOf(check.evaluate(actual.value())));
+                mismatches.addAll(List.copyOf(check.evaluate(actual.value(), bindings)));
             }
         }
         var match = Match.of(mismatches);
@@ -75,7 +85,9 @@ final class DefaultExpect implements Expect {
         private final Supplier<Specs> specs;
         private final Supplier<SqlDialect> renderer;
         private final boolean localReferences;
-        private final List<Function<ParseContext, Check>> requirements = new ArrayList<>();
+        private final List<Function<ParseContext, ParameterizedCheck>> requirements = new ArrayList<>();
+        private final Set<BindingContext.Slot> parameters = new LinkedHashSet<>();
+        private boolean matchAllParameters;
         private String description;
 
         private Builder(Supplier<Specs> specs, Supplier<SqlDialect> renderer) {
@@ -321,6 +333,42 @@ final class DefaultExpect implements Expect {
         }
 
         @Override
+        public Expect.Builder binding(String name, Object value) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.NAMED, BindingValues.name(name)), value, false);
+        }
+
+        @Override
+        public Expect.Builder positionalBinding(int position, Object value) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.POSITIONAL, BindingValues.position(position)), value, false);
+        }
+
+        @Override
+        public Expect.Builder ordinalBinding(int index, Object value) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.ORDINAL, BindingValues.position(index)), value, false);
+        }
+
+        @Override
+        public Expect.Builder noBinding(String name) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.NAMED, BindingValues.name(name)), null, true);
+        }
+
+        @Override
+        public Expect.Builder noPositionalBinding(int position) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.POSITIONAL, BindingValues.position(position)), null, true);
+        }
+
+        @Override
+        public Expect.Builder noOrdinalBinding(int index) {
+            return binding(new BindingContext.Slot(BindingContext.Kind.ORDINAL, BindingValues.position(index)), null, true);
+        }
+
+        @Override
+        public Expect.Builder matchAllParameters() {
+            matchAllParameters = true;
+            return this;
+        }
+
+        @Override
         public Expect.Builder where(String... predicates) {
             return presence(
                 predicates,
@@ -379,10 +427,16 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect build() {
-            if (requirements.isEmpty()) {
+            if (requirements.isEmpty() && !matchAllParameters) {
                 throw new IllegalStateException("Declare at least one check before building an expectation.");
             }
-            return new DefaultExpect(specs, description, requirements);
+            var snapshot = new ArrayList<>(requirements);
+            if (matchAllParameters) {
+                var expected = Set.copyOf(parameters);
+                var local = localReferences;
+                snapshot.add(context -> (statement, bindings) -> bindings.matchAll(statement, local, expected));
+            }
+            return new DefaultExpect(specs, description, snapshot);
         }
 
         private Expect.Builder namedScope(
@@ -409,11 +463,15 @@ final class DefaultExpect implements Expect {
             var child = new Builder(specs, renderer, true);
             declaration.accept(child);
             var snapshot = (DefaultExpect) child.build();
-            return append(context -> {
+            parameters.addAll(child.parameters);
+            requirements.add(context -> {
                 var select = prepare.apply(context);
-                var checks = snapshot.requirements.stream().map(requirement -> requirement.apply(context)).toList();
-                return statement -> select.apply(statement).evaluate(checks, snapshot.description);
+                var checks = snapshot.requirements.stream()
+                    .map(requirement -> requirement.apply(context))
+                    .toList();
+                return (statement, bindings) -> select.apply(statement).evaluate(checks, snapshot.description, bindings);
             });
+            return this;
         }
 
         private static <T extends Node> T parseExpected(ParseContext context, Class<T> type, String sql, String kind) {
@@ -511,6 +569,9 @@ final class DefaultExpect implements Expect {
                 }
             }
             for (var name : snapshot) {
+                if (!forbidden) {
+                    parameters.add(new BindingContext.Slot(BindingContext.Kind.NAMED, name));
+                }
                 satisfies(statement -> {
                     boolean present = ModelInspector.parameters(statement, local)
                         .named()
@@ -544,7 +605,20 @@ final class DefaultExpect implements Expect {
         }
 
         private Expect.Builder append(Function<ParseContext, Check> requirement) {
-            requirements.add(requirement);
+            requirements.add(context -> {
+                var check = requirement.apply(context);
+                return (statement, bindings) -> check.evaluate(statement);
+            });
+            return this;
+        }
+
+        private Expect.Builder binding(BindingContext.Slot slot, Object value, boolean absent) {
+            var expected = BindingValues.copy(value);
+            var local = localReferences;
+            if (!absent) {
+                parameters.add(slot);
+            }
+            requirements.add(context -> (statement, bindings) -> bindings.value(statement, local, slot, expected, absent));
             return this;
         }
 
