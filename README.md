@@ -6,7 +6,7 @@ Test SQL structure without executing queries or relying on fragile string compar
 ## Direction
 
 - Lightweight Java library with no assertion-framework dependency.
-- SQM provides the SQL model and, as features are introduced, parsing and inspection.
+- SQM provides SQL parsing, inspection, rendering, and optional catalog validation.
 - Immutable, reusable expectations describe the checks to perform.
 - Terminal operations evaluate expectations: `matches`, `evaluate`, and `assertMatches`.
 - Assertion failures use standard `AssertionError`; SQL is never executed.
@@ -66,7 +66,8 @@ their implementation class is private. `build()` requires at least one check and
 copies the declaration into an immutable expectation. A description alone does
 not count as a check. Further builder changes do not affect earlier snapshots.
 Builders are not thread-safe. A trailing semicolon is allowed; statement sequences
-are rejected. No schema validation or SQL execution takes place.
+are rejected. Core checks inspect SQL structure; catalog validation is available
+through the optional module below. SQL is never executed.
 
 All three terminal methods use the same evaluation path. `matches` returns a
 boolean, `evaluate` returns a `Match`, and `assertMatches` throws a standard
@@ -570,6 +571,81 @@ independently). Custom checks receive that same SQM
 `Statement` instance and return an empty list for success or non-null diagnostics
 for failure. Custom checks used in shared expectations must be thread-safe.
 
+## Validate against a supplied catalog
+
+Add the optional module when your tests need SQM schema validation. It includes
+`assert-sql-core` transitively; applications using core alone do not acquire the
+catalog or validator dependencies.
+
+```xml
+<dependency>
+    <groupId>io.github.icher-g</groupId>
+    <artifactId>assert-sql-validation</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <scope>test</scope>
+</dependency>
+```
+
+Supply SQM's public catalog types directly. The catalog is explicit test data;
+Assert SQL does not discover it from a database or ORM mappings.
+
+```java
+import io.assertsql.Expect;
+import io.assertsql.validation.SchemaChecks;
+import io.sqm.catalog.model.CatalogColumn;
+import io.sqm.catalog.model.CatalogSchema;
+import io.sqm.catalog.model.CatalogTable;
+import io.sqm.catalog.model.CatalogType;
+import static io.sqm.core.dialect.SqlDialectId.POSTGRESQL;
+
+var schema = CatalogSchema.of(
+    CatalogTable.of("app", "users", CatalogColumn.of("id", CatalogType.LONG), CatalogColumn.of("name", CatalogType.STRING))
+);
+var validUsers = Expect.sql(POSTGRESQL)
+    .as("users schema contract")
+    .satisfies(SchemaChecks.validAgainst(schema, POSTGRESQL))
+    .table("app.users")
+    .noSelectStar()
+    .build();
+
+validUsers.assertMatches("SELECT u.id, u.name FROM app.users u");
+var invalid = validUsers.evaluate("SELECT u.missing FROM app.users u");
+System.out.println(invalid.describe()); // Includes SQM's COLUMN_NOT_FOUND diagnostic.
+```
+
+`validAgainst(...)` returns a reusable `Check`. Validation runs only at evaluation,
+on the original parsed statement, with SQM's name resolution, type checks, and
+dialect rules. Invalid SQL produces `PARSE_ERROR` and skips validation. Use the
+same dialect for parsing and validation: ANSI uses SQM's generic validator; the
+other four dialects use their SQM extensions and default dialect versions.
+
+Each SQM problem retains its code, message, available clause path, and reporting
+order in `Match`. SQM 0.5.0 exposes no severity or warning field: every reported
+problem fails the check. Unsupported dialect identifiers are rejected when creating
+the check. Custom `DialectQuery` models and MERGE statements unsupported by SQM's
+configured dialect capabilities produce `VALIDATION_UNSUPPORTED`; native SQM
+dialect feature diagnostics retain their original codes.
+
+Attach validation at the root to preserve the full CTE and correlated-reference
+context. Inside `.outer(...)`, `.cte(...)`, `.derived(...)`, or `.exists(...)`, it
+validates only the selected body as a standalone statement, without enclosing
+bindings. SQM supports query and DML validation, including the CTE/subquery forms
+covered by the tests; its coverage and limitations apply here. In particular,
+SQM 0.5.0 can accept an unknown derived-table output column such as
+`SELECT q.missing FROM (SELECT id FROM app.users) q`. A successful check means SQM
+reported no problems; it does not prove runtime results, constraints, or plans.
+
+`CatalogSchema`, `CatalogTable`, and their contents are immutable; SQM copies
+caller-owned collections during construction. The check retains the supplied
+catalog reference and creates fresh validation state for each evaluation, so it
+can be reused concurrently. Create a new catalog/check for a different schema.
+SQM's permissive catalogs, such as `CatalogSchema.allowEverything()`, retain
+their permissive behavior and cannot verify table/column existence.
+
+[CatalogValidationExampleTest](assert-sql-examples/src/test/java/io/assertsql/examples/CatalogValidationExampleTest.java)
+validates actual jOOQ-generated SQL with a CTE and correlated EXISTS using an
+in-memory catalog, including a missing-column failure, without a database.
+
 ## Build
 
 Requires JDK 21 or later and Maven 3.9 or later.
@@ -578,9 +654,10 @@ Requires JDK 21 or later and Maven 3.9 or later.
 mvn verify
 ```
 
-The parent manages dependency and build plugin versions. `assert-sql-core` is the
-initial library module, with Maven coordinates `io.github.icher-g:assert-sql-core`
-and package `io.assertsql`. JUnit Jupiter is used only for tests.
+The parent manages dependency and build plugin versions. `assert-sql-core`
+provides the structural API in `io.assertsql`; optional `assert-sql-validation`
+adds `io.assertsql.validation.SchemaChecks`. Both use Maven group
+`io.github.icher-g`. JUnit Jupiter is used only for tests.
 
 SQM is an external dependency (`io.github.icher-g:sqm-core:0.5.0`), resolved from
 Maven Central. No extra repository configuration, GitHub credentials, or local

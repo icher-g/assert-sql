@@ -43,6 +43,7 @@
 
     <modules>
         <module>assert-sql-core</module>
+        <module>assert-sql-validation</module>
         <module>assert-sql-examples</module>
     </modules>
 

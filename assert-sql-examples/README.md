@@ -1,7 +1,7 @@
 # Testing application-generated SQL
 
 These executable examples accompany [story #3](https://github.com/icher-g/assert-sql/issues/3)
-through [story #6](https://github.com/icher-g/assert-sql/issues/6). They test SQL produced
+through [story #7](https://github.com/icher-g/assert-sql/issues/7). They test SQL produced
 by application code and capture SQL from real Hibernate HQL execution using Assert SQL's public API.
 
 ## Run
@@ -24,6 +24,29 @@ The example pins jOOQ Open Source Edition **3.19.39** and the optional JAXB API
 **4.0.4** needed by jOOQ's Settings annotations at compile time. Both have test
 scope, as do Hibernate ORM **6.6.59.Final**, H2 **2.4.240**, Assert SQL, and JUnit Jupiter.
 Hibernate and H2 are confined to this example module and do not enter the core runtime.
+
+## Catalog validation without a database
+
+[CatalogValidationExampleTest](src/test/java/io/assertsql/examples/CatalogValidationExampleTest.java)
+uses the optional `assert-sql-validation` module to validate actual jOOQ output:
+
+```sql
+WITH active_users(id) AS (SELECT u.id FROM users AS u WHERE u.active = true)
+SELECT a.id FROM active_users AS a
+WHERE EXISTS (SELECT 1 FROM audit AS x WHERE x.user_id = a.id)
+```
+
+Both tests construct their public SQM `CatalogSchema` and expectations inline.
+The passing test supplies `users(id, active)` and `audit(user_id)`, then attaches
+`SchemaChecks.validAgainst(schema, POSTGRESQL)` to the full statement so SQM retains
+CTE and correlated-reference bindings. It combines validation with a scoped
+structural assertion on the CTE. The failing test instead supplies `audit(id)` and
+verifies SQM's `COLUMN_NOT_FOUND` diagnostic for `x.user_id`.
+
+These tests use no connection, JDBC execution, or schema introspection. The catalog
+is caller-owned test data. SQM's validation coverage applies, including its current
+derived-output-column limitation; see the [validation API and boundaries](../README.md#validate-against-a-supplied-catalog).
+The validation dependency is test-scoped here and does not enter the core module.
 
 ## The contract
 
