@@ -13,7 +13,9 @@ The normal reactor includes `assert-sql-examples`, including real Hibernate quer
 against an embedded in-memory H2 database. No external database service is needed.
 That module is test-only: `maven.install.skip=true` skips its local installation,
 and `maven.deploy.skip=true` excludes it from GitHub Packages,
-GPG signing, and Central staging. The parent and core remain the published artifacts.
+GPG signing, and Central staging. The parent, core, and optional validation module
+are published artifacts. Both library modules run in the normal CI reactor;
+validation's dependencies are confined to its own artifact.
 
 ## Snapshots
 
@@ -48,7 +50,7 @@ The workflow derives the version from the tag and uses the pinned Maven Versions
 plugin to update parent and module POMs **only in the runner checkout**. There is
 no version commit or push back to GitHub. It then runs tests, builds source and
 Javadoc JARs, signs artifacts using the Maven GPG plugin's BC signer, and uploads
-both the parent POM and core module to Central Portal.
+the parent POM, core module, and validation module to Central Portal.
 
 Like SQM, `autoPublish` is disabled: the job waits for validation, then you finish
 publication in [Central Portal](https://central.sonatype.com/publishing/deployments).
