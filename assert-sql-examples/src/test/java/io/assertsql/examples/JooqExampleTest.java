@@ -12,6 +12,37 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JooqExampleTest {
     @Test
+    void separatesCteAndOuterReferencesInGeneratedSql() {
+        /* SQL inspected (formatted for readability):
+         * WITH active_users(id) AS (
+         *     SELECT u.id FROM users AS u WHERE u.active = true
+         * )
+         * SELECT a.id FROM active_users AS a
+         * WHERE EXISTS (SELECT 1 FROM audit AS x WHERE x.user_id = a.id)
+         */
+        var sql = JooqUserQueries.activeUsersWithAudit().getSQL(ParamType.NAMED);
+        var expectation = Expect.sql(POSTGRESQL)
+            .as("active users with audit records")
+            .table("users", "audit")
+            .outer(query -> query
+                .table("active_users a")
+                .column("a.id")
+                .noTable("users", "audit")
+                .noColumn("x.user_id")
+                .noSelectStar()
+            )
+            .cte("active_users", query -> query.table("users u").exactProjection("u.id").where("u.active = true").noTable("audit"))
+            .build();
+        expectation.assertMatches(sql);
+
+        // A reference in the CTE cannot satisfy an expectation on the outer query.
+        var wrongScope = Expect.sql(POSTGRESQL).outer(query -> query.table("users")).build();
+        var error = assertThrows(AssertionError.class, () -> wrongScope.assertMatches(sql));
+        assertTrue(error.getMessage().contains("TABLE_NOT_REFERENCED"));
+        assertTrue(error.getMessage().contains("outer query"));
+    }
+
+    @Test
     void assertsGeneratedSqlWithoutExecutingIt() {
         /* SQL inspected (formatted for readability):
          * SELECT u.id, u.name, p.display_name AS profile_name

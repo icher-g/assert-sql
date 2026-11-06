@@ -6,7 +6,10 @@ import io.sqm.core.collect.ParametersCollector;
 import io.sqm.core.walk.RecursiveNodeVisitor;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Inspects SQM models using dedicated collectors where available and SQM's
@@ -16,8 +19,14 @@ final class ModelInspector {
     private ModelInspector() {
     }
 
-    static boolean containsTable(Statement statement, Table expected) {
-        var collector = new TableRefsCollector();
+    static boolean containsTable(Statement statement, Table expected, boolean local) {
+        var level = queryLevel(statement, local);
+        var collector = new TableRefsCollector() {
+            @Override
+            protected Void accept(Node node) {
+                return withinLevel(node, level) ? super.accept(node) : null;
+            }
+        };
         statement.accept(collector);
         return collector.getTableRefs()
             .stream()
@@ -32,8 +41,8 @@ final class ModelInspector {
             && Identifiers.matches(actual.alias(), expected.alias());
     }
 
-    static boolean containsJoinTable(Statement statement, Table expected, JoinKind kind) {
-        return joins(statement).stream().anyMatch(join ->
+    static boolean containsJoinTable(Statement statement, Table expected, JoinKind kind, boolean local) {
+        return joins(statement, local).stream().anyMatch(join ->
             join.right() instanceof Table table
                 && matchesTable(table, expected)
                 && (kind == null || switch (join) {
@@ -95,22 +104,28 @@ final class ModelInspector {
         return pagination == null ? null : pagination.offset();
     }
 
-    static ParametersCollector parameters(Statement statement) {
-        var collector = new ParametersCollector();
+    static ParametersCollector parameters(Statement statement, boolean local) {
+        var level = queryLevel(statement, local);
+        var collector = new ParametersCollector() {
+            @Override
+            protected Void accept(Node node) {
+                return withinLevel(node, level) ? super.accept(node) : null;
+            }
+        };
         statement.accept(collector);
         return collector;
     }
 
-    static boolean containsColumn(Statement statement, ColumnExpr expected) {
-        return collect(statement, ColumnExpr.class)
+    static boolean containsColumn(Statement statement, ColumnExpr expected, boolean local) {
+        return collect(statement, ColumnExpr.class, local)
             .stream()
             .anyMatch(actual ->
                 Identifiers.matches(actual.name(), expected.name()) && Identifiers.matches(actual.tableAlias(), expected.tableAlias())
             );
     }
 
-    static List<Join> joins(Statement statement) {
-        return collect(statement, Join.class);
+    static List<Join> joins(Statement statement, boolean local) {
+        return collect(statement, Join.class, local);
     }
 
     static Predicate outerWhere(Statement statement) {
@@ -123,6 +138,19 @@ final class ModelInspector {
         };
     }
 
+    static Set<Statement> queryLevel(Statement statement, boolean local) {
+        if (!local) {
+            return null;
+        }
+        Set<Statement> level = Collections.newSetFromMap(new IdentityHashMap<>());
+        addLevel(statement, level);
+        return level;
+    }
+
+    static boolean withinLevel(Node node, Set<Statement> level) {
+        return level == null || !(node instanceof CteDef) && (!(node instanceof Statement statement) || level.contains(statement));
+    }
+
     private static LimitOffset pagination(Statement statement) {
         return switch (outerBody(statement)) {
             case SelectQuery select -> select.limitOffset();
@@ -131,8 +159,20 @@ final class ModelInspector {
         };
     }
 
-    private static <T extends Node> List<T> collect(Node root, Class<T> type) {
+    private static void addLevel(Statement statement, Set<Statement> level) {
+        if (statement == null || !level.add(statement)) {
+            return;
+        }
+        if (statement instanceof WithQuery with) {
+            addLevel(with.body(), level);
+        } else if (statement instanceof CompositeQuery composite) {
+            composite.terms().forEach(term -> addLevel(term, level));
+        }
+    }
+
+    private static <T extends Node> List<T> collect(Statement root, Class<T> type, boolean local) {
         var nodes = new ArrayList<T>();
+        var level = queryLevel(root, local);
         var visitor = new RecursiveNodeVisitor<Void>() {
             @Override
             protected Void defaultResult() {
@@ -141,6 +181,9 @@ final class ModelInspector {
 
             @Override
             protected Void accept(Node node) {
+                if (!withinLevel(node, level)) {
+                    return null;
+                }
                 if (type.isInstance(node)) {
                     nodes.add(type.cast(node));
                 }

@@ -1,7 +1,7 @@
 # Testing application-generated SQL
 
 These executable examples accompany [story #3](https://github.com/icher-g/assert-sql/issues/3)
-and [story #4](https://github.com/icher-g/assert-sql/issues/4). They test SQL produced
+through [story #5](https://github.com/icher-g/assert-sql/issues/5). They test SQL produced
 by application code and capture SQL from real Hibernate HQL execution using Assert SQL's public API.
 
 ## Run
@@ -90,6 +90,35 @@ The indexed SQL example uses `getSQL(ParamType.INDEXED)` and checks its position
 placeholder count. Values are obtained separately from jOOQ's `getBindValues()`
 and checked with JUnit. Assert SQL cannot recover binding values from SQL text;
 native binding assertions are tracked separately in story #8.
+
+### CTE and outer-query scopes
+
+`JooqUserQueries.activeUsersWithAudit()` generates this SQL through jOOQ:
+
+```sql
+WITH active_users(id) AS (
+    SELECT u.id FROM users AS u WHERE u.active = true
+)
+SELECT a.id FROM active_users AS a
+WHERE EXISTS (SELECT 1 FROM audit AS x WHERE x.user_id = a.id)
+```
+
+`separatesCteAndOuterReferencesInGeneratedSql` constructs the scoped expectation
+inline in [JooqExampleTest](src/test/java/io/assertsql/examples/JooqExampleTest.java):
+
+```java
+var sql = JooqUserQueries.activeUsersWithAudit().getSQL(ParamType.NAMED);
+Expect.sql(POSTGRESQL)
+    .outer(query -> query.table("active_users a").column("a.id").noTable("users", "audit"))
+    .cte("active_users", query -> query.table("users u").exactProjection("u.id").where("u.active = true"))
+    .build()
+    .assertMatches(sql);
+```
+
+The same test verifies that `.outer(query -> query.table("users"))` fails with
+`TABLE_NOT_REFERENCED` and an `outer query` location: a table inside the CTE cannot
+satisfy that outer-only requirement. Captured/rendered SQL is passed unchanged to
+Assert SQL. See the root README for the complete scope contract and nested CTE rules.
 
 ### Rendering and SQM compatibility
 

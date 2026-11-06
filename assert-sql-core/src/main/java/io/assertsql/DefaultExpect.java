@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -72,18 +73,38 @@ final class DefaultExpect implements Expect {
     private static final class Builder implements Expect.Builder {
         private final Supplier<Specs> specs;
         private final Supplier<SqlDialect> renderer;
+        private final boolean localReferences;
         private final List<Function<ParseContext, Check>> requirements = new ArrayList<>();
         private String description;
 
         private Builder(Supplier<Specs> specs, Supplier<SqlDialect> renderer) {
+            this(specs, renderer, false);
+        }
+
+        private Builder(Supplier<Specs> specs, Supplier<SqlDialect> renderer, boolean localReferences) {
             this.specs = specs;
             this.renderer = renderer;
+            this.localReferences = localReferences;
         }
 
         @Override
         public Expect.Builder as(String description) {
             this.description = Objects.requireNonNull(description, "description");
             return this;
+        }
+
+        @Override
+        public Expect.Builder outer(Consumer<Expect.Builder> declaration) {
+            return scope(null, declaration);
+        }
+
+        @Override
+        public Expect.Builder cte(String name, Consumer<Expect.Builder> declaration) {
+            Objects.requireNonNull(name, "name");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("CTE name must not be blank.");
+            }
+            return scope(name, declaration);
         }
 
         @Override
@@ -97,40 +118,60 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder table(String... names) {
-            return presence(names, "table", Table.class, false, ModelInspector::containsTable);
+            var local = localReferences;
+            return presence(names, "table", Table.class, false, (statement, expected) -> ModelInspector.containsTable(statement, expected, local));
         }
 
         @Override
         public Expect.Builder noTable(String... names) {
-            return presence(names, "table", Table.class, true, ModelInspector::containsTable);
+            var local = localReferences;
+            return presence(names, "table", Table.class, true, (statement, expected) -> ModelInspector.containsTable(statement, expected, local));
         }
 
         @Override
         public Expect.Builder column(String... names) {
-            return presence(names, "column", ColumnExpr.class, false, ModelInspector::containsColumn);
+            var local = localReferences;
+            return presence(
+                names,
+                "column",
+                ColumnExpr.class,
+                false,
+                (statement, expected) -> ModelInspector.containsColumn(statement, expected, local)
+            );
         }
 
         @Override
         public Expect.Builder noColumn(String... names) {
-            return presence(names, "column", ColumnExpr.class, true, ModelInspector::containsColumn);
+            var local = localReferences;
+            return presence(
+                names,
+                "column",
+                ColumnExpr.class,
+                true,
+                (statement, expected) -> ModelInspector.containsColumn(statement, expected, local)
+            );
         }
 
         @Override
         public Expect.Builder join(String... joins) {
-            return presence(joins, "join", Join.class, false, (statement, expected) -> ModelInspector.joins(statement).contains(expected));
+            var local = localReferences;
+            return presence(joins, "join", Join.class, false, (statement, expected) -> ModelInspector.joins(statement, local).contains(expected));
         }
 
         @Override
         public Expect.Builder noJoin(String... joins) {
-            return presence(joins, "join", Join.class, true, (statement, expected) -> ModelInspector.joins(statement).contains(expected));
+            var local = localReferences;
+            return presence(joins, "join", Join.class, true, (statement, expected) -> ModelInspector.joins(statement, local).contains(expected));
         }
 
         @Override
         public Expect.Builder noJoin() {
+            var local = localReferences;
+            var message = local ? "Expected no joins at the selected query level." : "Expected no joins, including in nested queries.";
             return satisfies(statement ->
-                ModelInspector.joins(statement).isEmpty()
+                ModelInspector.joins(statement, local).isEmpty()
                     ? List.of()
-                    : List.of(new Mismatch("JOIN_PRESENT", "statement", "Expected no joins, including in nested queries."))
+                    : List.of(new Mismatch("JOIN_PRESENT", "statement", message))
             );
         }
 
@@ -299,7 +340,8 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noSelectStar() {
-            return satisfies(SelectStars::find);
+            var local = localReferences;
+            return satisfies(statement -> SelectStars.find(statement, local));
         }
 
         @Override
@@ -328,6 +370,29 @@ final class DefaultExpect implements Expect {
                 throw new IllegalStateException("Declare at least one check before building an expectation.");
             }
             return new DefaultExpect(specs, description, requirements);
+        }
+
+        private Expect.Builder scope(String name, Consumer<Expect.Builder> declaration) {
+            Objects.requireNonNull(declaration, "declaration");
+            var child = new Builder(specs, renderer, true);
+            declaration.accept(child);
+            var snapshot = (DefaultExpect) child.build();
+            return append(context -> {
+                Identifier expected = null;
+                if (name != null) {
+                    var table = parseExpected(context, Table.class, name, "CTE name");
+                    if (table.schema() != null || table.alias() != null) {
+                        throw new IllegalArgumentException("Expected one unqualified CTE identifier: " + name);
+                    }
+                    expected = table.name();
+                }
+                var identifier = expected;
+                var checks = snapshot.requirements.stream().map(requirement -> requirement.apply(context)).toList();
+                return statement -> {
+                    var selected = name == null ? QueryScope.outer(statement) : QueryScope.cte(statement, identifier);
+                    return selected.evaluate(checks, snapshot.description);
+                };
+            });
         }
 
         private static <T extends Node> T parseExpected(ParseContext context, Class<T> type, String sql, String kind) {
@@ -389,12 +454,13 @@ final class DefaultExpect implements Expect {
         }
 
         private Expect.Builder joinedTables(String[] names, JoinKind kind, boolean forbidden) {
+            var local = localReferences;
             return presence(
                 names,
                 "join_table",
                 Table.class,
                 forbidden,
-                (statement, expected) -> ModelInspector.containsJoinTable(statement, expected, kind)
+                (statement, expected) -> ModelInspector.containsJoinTable(statement, expected, kind, local)
             );
         }
 
@@ -417,6 +483,7 @@ final class DefaultExpect implements Expect {
 
         private Expect.Builder namedParameters(String[] names, boolean forbidden) {
             var snapshot = fragments(names, "parameter");
+            var local = localReferences;
             for (var name : snapshot) {
                 if (name.isBlank() || name.startsWith(":") || name.startsWith("@") || name.startsWith("#{")) {
                     throw new IllegalArgumentException("Use a non-blank canonical parameter name without prefix: " + name);
@@ -424,7 +491,7 @@ final class DefaultExpect implements Expect {
             }
             for (var name : snapshot) {
                 satisfies(statement -> {
-                    boolean present = ModelInspector.parameters(statement)
+                    boolean present = ModelInspector.parameters(statement, local)
                         .named()
                         .stream()
                         .map(NamedParamExpr.class::cast)
@@ -442,8 +509,9 @@ final class DefaultExpect implements Expect {
 
         private Expect.Builder parametersCount(int count, boolean positionalOnly) {
             nonNegative(count);
+            var local = localReferences;
             return satisfies(statement -> {
-                var parameters = ModelInspector.parameters(statement);
+                var parameters = ModelInspector.parameters(statement, local);
                 int actual = parameters.positional().size() + (positionalOnly ? 0 : parameters.named().size());
                 return result(
                     actual == count,

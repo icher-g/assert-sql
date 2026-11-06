@@ -43,4 +43,23 @@ public final class JooqUserQueries {
             .limit(inline(pageSize))
             .offset(inline(offset));
     }
+
+    /**
+     * Generates a query with separate CTE, outer-query, and EXISTS-subquery references.
+     *
+     * @return the query to render without executing it
+     */
+    public static Select<?> activeUsersWithAudit() {
+        var context = DSL.using(POSTGRES, new Settings().withRenderQuotedNames(RenderQuotedNames.EXPLICIT_DEFAULT_UNQUOTED));
+        var userId = field(name("u", "id"), Long.class);
+        var active = field(name("u", "active"), Boolean.class);
+        var activeUsers = name("active_users").fields("id")
+            .as(context.select(userId).from(table(name("users")).as("u")).where(active.eq(inline(true))));
+        var outerId = field(name("a", "id"), Long.class);
+        var auditUserId = field(name("x", "user_id"), Long.class);
+        return context.with(activeUsers)
+            .select(outerId)
+            .from(table(name("active_users")).as("a"))
+            .whereExists(context.select(inline(1)).from(table(name("audit")).as("x")).where(auditUserId.eq(outerId)));
+    }
 }

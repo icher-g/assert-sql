@@ -4,6 +4,7 @@ import io.sqm.core.JoinKind;
 import io.sqm.core.dialect.SqlDialectId;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * An immutable SQL expectation produced by a mutable {@link Builder}.
@@ -79,6 +80,13 @@ public interface Expect {
      * Each supplied positive fragment must match, and each negative fragment must
      * be absent. Arguments are defensively copied during declaration and parsed
      * only during evaluation.
+     * Recursive-search descriptions below apply outside scope blocks. Inside
+     * {@link Builder#outer(Consumer)} and {@link Builder#cte(String, Consumer)},
+     * reference, join, wildcard, and parameter searches stay at the selected level.
+     * Set-operation terms belong to that level, excluding their nested queries and
+     * WITH definitions. Complete clause comparisons and custom checks keep the
+     * original selected model, including its nested SQL. INSERT SELECT sources
+     * are nested queries for scoped searches; local DML/RETURNING expressions count.
      */
     interface Builder {
         /**
@@ -88,6 +96,35 @@ public interface Expect {
          * @return this builder
          */
         Builder as(String description);
+
+        /**
+         * Declares checks on the outer body of the current statement, excluding its WITH definitions.
+         * Reference, join, wildcard, and parameter searches exclude nested queries; set-operation terms
+         * belong to this level. Clause comparisons and custom checks retain the complete selected model.
+         * The callback runs now; its non-empty declaration is snapshotted when it returns. SQL is parsed
+         * only during evaluation. Calls outside this block retain their existing behavior.
+         *
+         * @param declaration non-null callback using the existing assertion vocabulary
+         * @return this parent builder
+         * @throws IllegalStateException if the block declares no checks
+         */
+        Builder outer(Consumer<Builder> declaration);
+
+        /**
+         * Declares checks on a CTE body defined by the current statement's immediate WITH clause.
+         * Nested definitions require nested cte blocks; no descendant or inherited-definition search
+         * or recursive-reference expansion occurs. CTE names follow table identifier matching rules.
+         * Missing or ambiguous selections fail even for negative checks. Searches are local to the
+         * selected body, as in {@link #outer(Consumer)}; its complete model is retained for clause
+         * comparisons, structural equality, custom checks, and further CTE selection.
+         *
+         * @param name one unqualified SQL identifier, optionally quoted; parsed during evaluation
+         * @param declaration non-null callback, snapshotted when it returns
+         * @return this parent builder
+         * @throws IllegalArgumentException if the name is blank, or invalid when parsed during evaluation
+         * @throws IllegalStateException if the block declares no checks
+         */
+        Builder cte(String name, Consumer<Builder> declaration);
 
         /**
          * Requires a query, including WITH queries and SELECT set operations.
