@@ -1,5 +1,6 @@
 package io.assertsql;
 
+import io.sqm.core.ExistsPredicate;
 import io.sqm.core.Identifier;
 import io.sqm.core.Statement;
 import io.sqm.core.WithQuery;
@@ -36,8 +37,43 @@ record QueryScope(Statement statement, String label, Mismatch failure) {
         return new QueryScope(with.ctes().get(index).body(), label + " (WITH item " + (index + 1) + ")", null);
     }
 
-    private static QueryScope missing(String label) {
-        return new QueryScope(null, label, new Mismatch("SCOPE_NOT_FOUND", label, "No matching CTE is defined by this statement's WITH clause."));
+    static QueryScope derived(Statement statement, Identifier alias) {
+        var label = "derived table \"" + alias.value() + "\"";
+        var matches = ModelInspector.derivedTables(statement).stream().filter(table -> Identifiers.matches(table.alias(), alias)).toList();
+        if (matches.isEmpty()) {
+            return failure("SCOPE_NOT_FOUND", label, "No matching derived-table alias exists at the current query level.");
+        }
+        if (matches.size() > 1) {
+            return failure("SCOPE_AMBIGUOUS", label, "Found " + matches.size() + " matching derived-table aliases at the current query level.");
+        }
+        return new QueryScope(matches.getFirst().query(), label, null);
+    }
+
+    static QueryScope exists(Statement statement) {
+        var matches = ModelInspector.existsPredicates(statement);
+        if (matches.isEmpty()) {
+            return failure("SCOPE_NOT_FOUND", "EXISTS subquery", "No EXISTS/NOT EXISTS predicate exists at the current query level.");
+        }
+        if (matches.size() > 1) {
+            return failure(
+                "SCOPE_AMBIGUOUS",
+                "EXISTS subquery",
+                "Found " + matches.size() + " direct EXISTS/NOT EXISTS predicates; select an index."
+            );
+        }
+        return selectedExists(matches.getFirst(), 0);
+    }
+
+    static QueryScope exists(Statement statement, int index) {
+        var matches = ModelInspector.existsPredicates(statement);
+        if (index >= matches.size()) {
+            return failure(
+                "SCOPE_NOT_FOUND",
+                "EXISTS subquery[" + index + "]",
+                "The index is outside the " + matches.size() + " direct EXISTS/NOT EXISTS predicates at the current query level."
+            );
+        }
+        return selectedExists(matches.get(index), index);
     }
 
     List<Mismatch> evaluate(List<Check> checks, String description) {
@@ -61,5 +97,18 @@ record QueryScope(Statement statement, String label, Mismatch failure) {
             }
         }
         return List.copyOf(mismatches);
+    }
+
+    private static QueryScope selectedExists(ExistsPredicate predicate, int index) {
+        var label = (predicate.negated() ? "NOT EXISTS" : "EXISTS") + " subquery[" + index + "]";
+        return new QueryScope(predicate.subquery(), label, null);
+    }
+
+    private static QueryScope missing(String label) {
+        return failure("SCOPE_NOT_FOUND", label, "No matching CTE is defined by this statement's WITH clause.");
+    }
+
+    private static QueryScope failure(String code, String label, String message) {
+        return new QueryScope(null, label, new Mismatch(code, label, message));
     }
 }

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.BiPredicate;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -95,16 +96,28 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder outer(Consumer<Expect.Builder> declaration) {
-            return scope(null, declaration);
+            return scope(context -> QueryScope::outer, declaration);
         }
 
         @Override
         public Expect.Builder cte(String name, Consumer<Expect.Builder> declaration) {
-            Objects.requireNonNull(name, "name");
-            if (name.isBlank()) {
-                throw new IllegalArgumentException("CTE name must not be blank.");
-            }
-            return scope(name, declaration);
+            return namedScope(name, "CTE name", QueryScope::cte, declaration);
+        }
+
+        @Override
+        public Expect.Builder derived(String alias, Consumer<Expect.Builder> declaration) {
+            return namedScope(alias, "derived-table alias", QueryScope::derived, declaration);
+        }
+
+        @Override
+        public Expect.Builder exists(Consumer<Expect.Builder> declaration) {
+            return scope(context -> QueryScope::exists, declaration);
+        }
+
+        @Override
+        public Expect.Builder exists(int index, Consumer<Expect.Builder> declaration) {
+            nonNegative(index);
+            return scope(context -> statement -> QueryScope.exists(statement, index), declaration);
         }
 
         @Override
@@ -372,26 +385,34 @@ final class DefaultExpect implements Expect {
             return new DefaultExpect(specs, description, requirements);
         }
 
-        private Expect.Builder scope(String name, Consumer<Expect.Builder> declaration) {
+        private Expect.Builder namedScope(
+            String name,
+            String kind,
+            BiFunction<Statement, Identifier, QueryScope> select,
+            Consumer<Expect.Builder> declaration
+        ) {
+            Objects.requireNonNull(name, kind);
+            if (name.isBlank()) {
+                throw new IllegalArgumentException(kind + " must not be blank.");
+            }
+            return scope(context -> {
+                var table = parseExpected(context, Table.class, name, kind);
+                if (table.schema() != null || table.alias() != null) {
+                    throw new IllegalArgumentException("Expected an unqualified identifier for " + kind + ": " + name);
+                }
+                return statement -> select.apply(statement, table.name());
+            }, declaration);
+        }
+
+        private Expect.Builder scope(Function<ParseContext, Function<Statement, QueryScope>> prepare, Consumer<Expect.Builder> declaration) {
             Objects.requireNonNull(declaration, "declaration");
             var child = new Builder(specs, renderer, true);
             declaration.accept(child);
             var snapshot = (DefaultExpect) child.build();
             return append(context -> {
-                Identifier expected = null;
-                if (name != null) {
-                    var table = parseExpected(context, Table.class, name, "CTE name");
-                    if (table.schema() != null || table.alias() != null) {
-                        throw new IllegalArgumentException("Expected one unqualified CTE identifier: " + name);
-                    }
-                    expected = table.name();
-                }
-                var identifier = expected;
+                var select = prepare.apply(context);
                 var checks = snapshot.requirements.stream().map(requirement -> requirement.apply(context)).toList();
-                return statement -> {
-                    var selected = name == null ? QueryScope.outer(statement) : QueryScope.cte(statement, identifier);
-                    return selected.evaluate(checks, snapshot.description);
-                };
+                return statement -> select.apply(statement).evaluate(checks, snapshot.description);
             });
         }
 

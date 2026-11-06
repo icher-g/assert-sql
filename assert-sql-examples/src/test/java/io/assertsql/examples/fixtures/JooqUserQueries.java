@@ -62,4 +62,23 @@ public final class JooqUserQueries {
             .from(table(name("active_users")).as("a"))
             .whereExists(context.select(inline(1)).from(table(name("audit")).as("x")).where(auditUserId.eq(outerId)));
     }
+
+    /**
+     * Generates a derived-table query with a correlated EXISTS subquery for nested-scope assertions.
+     *
+     * @return the query to render without executing it
+     */
+    public static Select<?> activeUserPageWithAudit() {
+        var context = DSL.using(POSTGRES, new Settings().withRenderQuotedNames(RenderQuotedNames.EXPLICIT_DEFAULT_UNQUOTED));
+        var userId = field(name("u", "id"), Long.class);
+        var userName = field(name("u", "name"), String.class);
+        var active = field(name("u", "active"), Boolean.class);
+        var page = context.select(userId, userName).from(table(name("users")).as("u")).where(active.eq(inline(true))).asTable("page");
+        var pageId = field(name("page", "id"), Long.class);
+        var pageName = field(name("page", "name"), String.class);
+        var auditUserId = field(name("x", "user_id"), Long.class);
+        return context.select(pageId, pageName)
+            .from(page)
+            .whereExists(context.select(inline(1)).from(table(name("audit")).as("x")).where(auditUserId.eq(pageId)));
+    }
 }

@@ -128,6 +128,14 @@ final class ModelInspector {
         return collect(statement, Join.class, local);
     }
 
+    static List<QueryTable> derivedTables(Statement statement) {
+        return collect(statement, QueryTable.class, true);
+    }
+
+    static List<ExistsPredicate> existsPredicates(Statement statement) {
+        return collect(statement, ExistsPredicate.class, true);
+    }
+
     static Predicate outerWhere(Statement statement) {
         return switch (statement) {
             case WithQuery query -> outerWhere(query.body());
