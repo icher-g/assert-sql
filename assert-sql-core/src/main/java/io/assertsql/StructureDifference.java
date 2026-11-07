@@ -1,8 +1,10 @@
 package io.assertsql;
 
 import io.sqm.core.Expression;
+import io.sqm.core.AnonymousParamExpr;
 import io.sqm.core.Node;
 import io.sqm.core.Predicate;
+import io.sqm.core.transform.ParameterizeLiteralsTransformer;
 import io.sqm.render.defaults.DefaultSqlWriter;
 import io.sqm.render.spi.ParameterizationMode;
 import io.sqm.render.spi.RenderContext;
@@ -24,10 +26,30 @@ final class StructureDifference {
     }
 
     static Mismatch between(Object expected, Object actual, SqlDialect dialect) {
-        return locate(expected, actual, "statement", new ArrayList<>(), RenderContext.of(dialect));
+        return between(expected, actual, dialect, Redaction.BINDINGS);
     }
 
-    private static Mismatch locate(Object expected, Object actual, String path, List<Fragment> fragments, RenderContext renderer) {
+    static Mismatch between(Object expected, Object actual, SqlDialect dialect, Redaction redaction) {
+        return locate(expected, actual, "statement", new ArrayList<>(), RenderContext.of(dialect), redaction);
+    }
+
+    static String sql(Node node, SqlDialect dialect, Redaction redaction) {
+        try {
+            return render(node, RenderContext.of(dialect), redaction);
+        }
+        catch (RuntimeException ignored) {
+            return "unavailable";
+        }
+    }
+
+    private static Mismatch locate(
+        Object expected,
+        Object actual,
+        String path,
+        List<Fragment> fragments,
+        RenderContext renderer,
+        Redaction redaction
+    ) {
         // Keep enclosing SQL constructs while reflection descends into identifiers, literals, and other model values.
         if (isSqlContext(expected) || isSqlContext(actual)) {
             fragments.add(new Fragment(expected, actual));
@@ -35,21 +57,21 @@ final class StructureDifference {
         if (expected instanceof List<?> left && actual instanceof List<?> right) {
             for (int i = 0; i < Math.min(left.size(), right.size()); i++) {
                 if (!Objects.equals(left.get(i), right.get(i))) {
-                    return locate(left.get(i), right.get(i), path + "[" + i + "]", fragments, renderer);
+                    return locate(left.get(i), right.get(i), path + "[" + i + "]", fragments, renderer, redaction);
                 }
             }
-            return mismatch(path + ".size", left.size(), right.size(), fragments, renderer);
+            return mismatch(path + ".size", left.size(), right.size(), fragments, renderer, redaction);
         }
         if (expected != null && actual != null && expected.getClass() == actual.getClass() && expected.getClass().isRecord()) {
             for (var component : expected.getClass().getRecordComponents()) {
                 var left = read(component, expected);
                 var right = read(component, actual);
                 if (!Objects.equals(left, right)) {
-                    return locate(left, right, path + "." + component.getName(), fragments, renderer);
+                    return locate(left, right, path + "." + component.getName(), fragments, renderer, redaction);
                 }
             }
         }
-        return mismatch(path, expected, actual, fragments, renderer);
+        return mismatch(path, expected, actual, fragments, renderer, redaction);
     }
 
     private static boolean isSqlContext(Object value) {
@@ -68,31 +90,47 @@ final class StructureDifference {
         }
     }
 
-    private static Mismatch mismatch(String path, Object expected, Object actual, List<Fragment> fragments, RenderContext renderer) {
+    private static Mismatch mismatch(
+        String path,
+        Object expected,
+        Object actual,
+        List<Fragment> fragments,
+        RenderContext renderer,
+        Redaction redaction
+    ) {
         for (int i = fragments.size() - 1; i >= 0; i--) {
             var fragment = fragments.get(i);
             try {
-                var left = render(fragment.expected(), renderer);
-                var right = render(fragment.actual(), renderer);
-                if (!left.equals(right)) {
-                    return new Mismatch("STRUCTURE_MISMATCH", "", "Expected SQL <" + left + "> but was <" + right + ">.");
+                var left = fragment(render(fragment.expected(), renderer, redaction));
+                var right = fragment(render(fragment.actual(), renderer, redaction));
+                if (!left.equals(right) || redaction == Redaction.ALL) {
+                    var suffix = left.equals(right) ? " Literal values differ (redacted)." : "";
+                    return new Mismatch("STRUCTURE_MISMATCH", "", "Expected SQL <" + left + "> but was <" + right + ">." + suffix);
                 }
             } catch (RuntimeException ignored) {
                 // A renderer may not support this fragment. Try its enclosing SQL without masking the original mismatch.
             }
         }
-        return new Mismatch("STRUCTURE_MISMATCH", path, "Expected <" + summarize(expected) + "> but was <" + summarize(actual) + ">.");
+        var message = redaction == Redaction.ALL
+            ? "SQL structure differs; values omitted because this fragment could not be rendered safely."
+            : "Expected <" + summarize(expected) + "> but was <" + summarize(actual) + ">.";
+        return new Mismatch("STRUCTURE_MISMATCH", path, message);
     }
 
-    private static String render(Object value, RenderContext renderer) {
+    private static String render(Object value, RenderContext renderer, Redaction redaction) {
         if (value == null) {
             return "absent";
         }
         if (value instanceof List<?> list) {
-            return list.isEmpty() ? "empty" : list.stream().map(item -> render(item, renderer)).collect(Collectors.joining(", "));
+            return list.isEmpty() ? "empty" : list.stream()
+                .map(item -> render(item, renderer, redaction))
+                .collect(Collectors.joining(", "));
         }
         if (!(value instanceof Node node)) {
-            return String.valueOf(value);
+            return redaction == Redaction.ALL ? "?" : String.valueOf(value);
+        }
+        if (redaction == Redaction.ALL) {
+            node = node.accept(new ParameterizeLiteralsTransformer(index -> AnonymousParamExpr.of()));
         }
         var prepared = renderer.dialect().beforeRender(node, RenderOptions.of(ParameterizationMode.Inline));
         var writer = new DefaultSqlWriter(renderer);
@@ -104,6 +142,11 @@ final class StructureDifference {
     }
 
     private static String summarize(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream()
+                .map(StructureDifference::summarize)
+                .collect(Collectors.joining(", ", "[", "]"));
+        }
         if (value instanceof Node) {
             for (var type : value.getClass().getInterfaces()) {
                 if (Node.class.isAssignableFrom(type)) {
@@ -113,6 +156,10 @@ final class StructureDifference {
         }
         var text = String.valueOf(value);
         return text.length() <= 200 ? text : text.substring(0, 197) + "...";
+    }
+
+    private static String fragment(String text) {
+        return text.length() <= 600 ? text : text.substring(0, 600) + "… (truncated)";
     }
 
     private record Fragment(Object expected, Object actual) {

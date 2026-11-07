@@ -64,6 +64,14 @@ public interface CollectionExpect {
         Builder as(String description);
 
         /**
+         * Sets an explicit policy for the collection, callback filters, and evaluated Expect alternatives.
+         * Without an override, filters retain their own policy and collection parser detail uses BINDINGS.
+         * @param redaction non-null disclosure policy
+         * @return this builder
+         */
+        Builder redaction(Redaction redaction);
+
+        /**
          * Requires the exact total count, including duplicate statements and every statement kind.
          *
          * @param count non-negative statement count

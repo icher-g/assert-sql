@@ -260,10 +260,16 @@ class NestedScopeTest {
     @Test
     void diagnosticsPreserveTheCompleteSelectorChainAndRenderedSql() {
         var expectation = Expect.sql(POSTGRESQL)
-            .derived("page", query -> query.exists(nested -> nested.as("audit projection").structurallyEquals("SELECT 1 FROM audit")))
+            .derived("page", query -> query
+                .exists(nested -> nested
+                    .as("audit projection")
+                    .structurallyEquals("SELECT 1 FROM audit")
+                )
+            )
             .build();
         var result = expectation.evaluate("SELECT id FROM (SELECT id FROM users WHERE EXISTS (SELECT 2 FROM audit)) page");
-        assertEquals("derived table \"page\" / EXISTS subquery[0] [audit projection]", result.mismatches().getFirst().path());
+        assertEquals("derived table \"page\" / EXISTS subquery[0]", result.mismatches().getFirst().path());
+        assertEquals(List.of("audit projection"), result.mismatches().getFirst().descriptions());
         assertTrue(result.describe().contains("Expected SQL <1> but was <2>"), result::describe);
         assertFalse(result.describe().contains("statement."));
     }

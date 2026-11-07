@@ -1,7 +1,7 @@
 # Testing application-generated SQL
 
 These executable examples accompany [story #3](https://github.com/icher-g/assert-sql/issues/3)
-through [story #9](https://github.com/icher-g/assert-sql/issues/9). They test SQL produced
+through [story #10](https://github.com/icher-g/assert-sql/issues/10). They test SQL produced
 by application code and capture SQL from real Hibernate HQL execution using Assert SQL's public API.
 
 ## Run
@@ -24,6 +24,22 @@ The example pins jOOQ Open Source Edition **3.19.39** and the optional JAXB API
 **4.0.4** needed by jOOQ's Settings annotations at compile time. Both have test
 scope, as do Hibernate ORM **6.6.59.Final**, H2 **2.4.240**, Assert SQL, and JUnit Jupiter.
 Hibernate and H2 are confined to this example module and do not enter the core runtime.
+
+## Readable failures and redaction
+
+[DiagnosticsExampleTest](src/test/java/io/assertsql/examples/DiagnosticsExampleTest.java)
+inspects the actual jOOQ CTE/EXISTS query with two named OR alternatives. The
+first expects a different active flag in the CTE and gives that scope its own
+description; the second expects a tenant parameter absent from the query.
+`Expect.or(Redaction.ALL, activeFlag, tenantParameter)` keeps the branch paths and
+descriptions while hiding SQL literals, including the differing boolean values.
+
+Expectation construction and the SQL comment are inline in the test. Structured
+`Mismatch.descriptions()` carries the outer branch and inner CTE labels separately
+from `path()`. The ordinary three-argument diagnostic constructor remains usable.
+By default, SQL literal detail remains visible and binding values remain hidden.
+Full redaction and an explicit opt-in to binding value detail are described in the
+[diagnostic policy guide](../README.md#diagnostic-detail-and-redaction).
 
 ## Counts over real captured statements
 

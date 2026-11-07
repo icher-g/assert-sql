@@ -16,5 +16,9 @@
  * <p>{@link io.assertsql.CollectionExpect} inspects caller-supplied statement lists with explicit
  * statement-kind counts and matching rules. All members are parsed before quantification, so invalid
  * SQL cannot establish absence. Capture and execution remain application responsibilities.</p>
+ *
+ * <p>{@link io.assertsql.Redaction} controls diagnostic disclosure without changing matching.
+ * Default diagnostics retain SQL literal detail and hide binding values. Full redaction uses SQM
+ * metadata and omits unsafe detail. Structured descriptions remain independent of codes and paths.</p>
  */
 package io.assertsql;

@@ -15,9 +15,11 @@ final class BindingContext {
     private final Map<String, Object> named;
     private final List<Object> positional;
     private final Map<Integer, Object> ordinal;
+    private final DiagnosticContext diagnostics;
     private final IdentityHashMap<AnonymousParamExpr, Integer> positions = new IdentityHashMap<>();
 
-    BindingContext(ParameterizedSql input, Statement statement) {
+    BindingContext(ParameterizedSql input, Statement statement, DiagnosticContext diagnostics) {
+        this.diagnostics = diagnostics;
         supplied = input.hasBindings();
         named = input.namedBindings();
         positional = input.positionalBindings();
@@ -28,16 +30,6 @@ final class BindingContext {
                 positions.put(anonymous, position++);
             }
         }
-    }
-
-    private static List<Mismatch> unavailable() {
-        return List.of(
-            new Mismatch("BINDINGS_UNAVAILABLE", "bindings", "Supply ParameterizedSql with explicit binding containers to evaluate binding checks.")
-        );
-    }
-
-    private static List<Mismatch> failure(String code, Slot slot, String message) {
-        return List.of(new Mismatch(code, slot.path(), message));
     }
 
     List<Mismatch> value(Statement statement, boolean local, Slot slot, Object expected, boolean absent) {
@@ -56,7 +48,14 @@ final class BindingContext {
         if (BindingValues.equal(expected, get(slot))) {
             return List.of();
         }
-        return failure("BINDING_MISMATCH", slot, "Binding value differs from the expected value.");
+        var message = diagnostics.redaction() == Redaction.NONE
+            ? "Expected binding <" + BindingValues.describe(expected) + "> but was <" + BindingValues.describe(get(slot)) + ">."
+            : "Binding value differs from the expected value.";
+        return failure("BINDING_MISMATCH", slot, message);
+    }
+
+    DiagnosticContext diagnostics() {
+        return diagnostics;
     }
 
     List<Mismatch> matchAll(Statement statement, boolean local, Set<Slot> expected) {
@@ -77,6 +76,16 @@ final class BindingContext {
             mismatches.addAll(complete(required));
         }
         return List.copyOf(mismatches);
+    }
+
+    private static List<Mismatch> unavailable() {
+        return List.of(
+            new Mismatch("BINDINGS_UNAVAILABLE", "bindings", "Supply ParameterizedSql with explicit binding containers to evaluate binding checks.")
+        );
+    }
+
+    private static List<Mismatch> failure(String code, Slot slot, String message) {
+        return List.of(new Mismatch(code, slot.path(), message));
     }
 
     private List<Mismatch> complete(Set<Slot> required) {

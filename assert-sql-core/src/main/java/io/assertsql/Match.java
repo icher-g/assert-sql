@@ -41,7 +41,7 @@ public interface Match {
         }
         return "SQL did not match expectations:\n" + mismatches()
             .stream()
-            .map(mismatch -> "- [" + mismatch.code() + "] " + (mismatch.path().isEmpty() ? "" : mismatch.path() + ": ") + mismatch.message())
+            .map(Match::format)
             .collect(Collectors.joining("\n"));
     }
 
@@ -53,6 +53,14 @@ public interface Match {
         if (!matches()) {
             throw new AssertionError(describe());
         }
+    }
+
+    private static String format(Mismatch mismatch) {
+        var labels = mismatch.descriptions().stream()
+            .map(label -> "[" + label + "] ")
+            .collect(Collectors.joining());
+        var path = mismatch.path().isEmpty() ? "" : mismatch.path() + ": ";
+        return "- [" + mismatch.code() + "] " + path + labels + mismatch.message();
     }
 }
 

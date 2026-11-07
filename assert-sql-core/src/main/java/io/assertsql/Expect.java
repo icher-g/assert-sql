@@ -58,6 +58,17 @@ public interface Expect {
     }
 
     /**
+     * Combines alternatives with an explicit diagnostic policy applied to every evaluated branch.
+     * Matching and short-circuit order are unchanged; omitted alternatives are never evaluated.
+     * @param redaction non-null policy overriding branch policies
+     * @param expects non-empty immutable alternatives
+     * @return an immutable OR expectation
+     */
+    static Expect or(Redaction redaction, Expect... expects) {
+        return OrExpect.of(Objects.requireNonNull(redaction, "redaction"), expects);
+    }
+
+    /**
      * Evaluates all requirements without executing SQL.
      *
      * @param actualSql non-null SQL text
@@ -140,6 +151,16 @@ public interface Expect {
          * @return this builder
          */
         Builder as(String description);
+
+        /**
+         * Sets the root diagnostic policy. BINDINGS is the default, retaining existing SQL literal detail.
+         * ALL hides SQL literals and bindings; NONE explicitly permits values. Codes and paths are unaffected.
+         * Matching is unchanged. The policy covers nested scopes; configure it on their root.
+         * @param redaction non-null policy
+         * @return this builder
+         * @throws IllegalStateException if called within a query scope
+         */
+        Builder redaction(Redaction redaction);
 
         /**
          * Declares checks on the outer body of the current statement, excluding its WITH definitions.

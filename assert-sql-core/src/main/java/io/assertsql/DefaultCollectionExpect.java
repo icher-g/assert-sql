@@ -16,18 +16,53 @@ final class DefaultCollectionExpect implements CollectionExpect {
     private final Supplier<Specs> specs;
     private final String description;
     private final List<Rule> rules;
+    private final Redaction redaction;
 
-    private DefaultCollectionExpect(Supplier<Specs> specs, String description, List<Rule> rules) {
+    private DefaultCollectionExpect(Supplier<Specs> specs, String description, List<Rule> rules, Redaction redaction) {
         this.specs = specs;
         this.description = description;
         this.rules = List.copyOf(rules);
+        this.redaction = redaction;
     }
 
     static CollectionExpect.Builder builder(SqlDialectId dialect) {
         return new Builder(dialect, SqlDialects.of(dialect).parser());
     }
 
-    private static List<Mismatch> evaluateRule(PreparedRule prepared, List<Entry> entries) {
+    @Override
+    public Match evaluate(List<String> statements) {
+        var snapshot = List.copyOf(Objects.requireNonNull(statements, "statements"));
+        var context = ParseContext.of(specs.get());
+        var policy = redaction == null ? Redaction.BINDINGS : redaction;
+        var diagnostics = new DiagnosticContext(policy, context.identifierQuoting(), snapshot, List.of(), ParameterizedSql.of(""));
+        var entries = new ArrayList<Entry>();
+        var mismatches = new ArrayList<Mismatch>();
+        for (int index = 0; index < snapshot.size(); index++) {
+            var sql = snapshot.get(index);
+            var parsed = context.parse(Statement.class, sql);
+            if (parsed.ok()) {
+                entries.add(new Entry(sql, parsed.value()));
+            }
+            else {
+                for (var problem : parsed.problems()) {
+                    mismatches.add(new Mismatch("PARSE_ERROR", "statements[" + index + "].sql[" + problem.pos() + "]", problem.message()));
+                }
+            }
+        }
+        if (!mismatches.isEmpty()) {
+            return result(mismatches, diagnostics);
+        }
+        // Prepare every filter before evaluating any custom check.
+        var prepared = rules.stream()
+            .map(rule -> new PreparedRule(rule, rule.filter() == null ? null : rule.filter().prepare(context, redaction)))
+            .toList();
+        for (var rule : prepared) {
+            mismatches.addAll(evaluateRule(rule, entries, redaction));
+        }
+        return result(mismatches, diagnostics);
+    }
+
+    private static List<Mismatch> evaluateRule(PreparedRule prepared, List<Entry> entries, Redaction redaction) {
         var rule = prepared.rule();
         if (rule.mode() == Mode.TOTAL) {
             if (entries.size() == rule.count()) {
@@ -46,7 +81,9 @@ final class DefaultCollectionExpect implements CollectionExpect {
             }
             var match = prepared.filter() != null
                 ? prepared.filter().apply(entry.statement(), ParameterizedSql.of(entry.sql()))
-                : rule.expectation() != null ? rule.expectation().evaluate(entry.sql()) : Match.of(List.of());
+                : rule.expectation() != null
+                    ? DiagnosticContext.evaluate(rule.expectation(), ParameterizedSql.of(entry.sql()), redaction)
+                    : Match.of(List.of());
             if (match.matches()) {
                 matched.add(index);
             }
@@ -103,43 +140,15 @@ final class DefaultCollectionExpect implements CollectionExpect {
 
     private static Mismatch atIndex(int index, Mismatch mismatch) {
         var suffix = mismatch.path().isEmpty() ? "" : "." + mismatch.path();
-        return new Mismatch(mismatch.code(), "statements[" + index + "]" + suffix, mismatch.message());
+        return new Mismatch(mismatch.code(), "statements[" + index + "]" + suffix, mismatch.message(), mismatch.descriptions());
     }
 
-    @Override
-    public Match evaluate(List<String> statements) {
-        var snapshot = List.copyOf(Objects.requireNonNull(statements, "statements"));
-        var context = ParseContext.of(specs.get());
-        var entries = new ArrayList<Entry>();
-        var mismatches = new ArrayList<Mismatch>();
-        for (int index = 0; index < snapshot.size(); index++) {
-            var sql = snapshot.get(index);
-            var parsed = context.parse(Statement.class, sql);
-            if (parsed.ok()) {
-                entries.add(new Entry(sql, parsed.value()));
-            }
-            else {
-                for (var problem : parsed.problems()) {
-                    mismatches.add(new Mismatch("PARSE_ERROR", "statements[" + index + "].sql[" + problem.pos() + "]", problem.message()));
-                }
-            }
-        }
-        if (!mismatches.isEmpty()) {
-            return result(mismatches);
-        }
-        // Prepare every filter before evaluating any custom check.
-        var prepared = rules.stream()
-            .map(rule -> new PreparedRule(rule, rule.filter() == null ? null : rule.filter().prepare(context)))
+    private Match result(List<Mismatch> mismatches, DiagnosticContext diagnostics) {
+        var safe = mismatches.stream()
+            .map(diagnostics::sanitize)
             .toList();
-        for (var rule : prepared) {
-            mismatches.addAll(evaluateRule(rule, entries));
-        }
-        return result(mismatches);
-    }
-
-    private Match result(List<Mismatch> mismatches) {
-        var match = Match.of(mismatches);
-        return description == null ? match : new DescribedMatch(description, match);
+        var match = Match.of(safe);
+        return description == null ? match : new DescribedMatch(diagnostics.description(description), match);
     }
 
     private enum Mode {
@@ -175,25 +184,22 @@ final class DefaultCollectionExpect implements CollectionExpect {
         private final Supplier<Specs> specs;
         private final List<Rule> rules = new ArrayList<>();
         private String description;
+        private Redaction redaction;
 
         private Builder(SqlDialectId dialect, Supplier<Specs> specs) {
             this.dialect = dialect;
             this.specs = specs;
         }
 
-        private static String label(Kind kind) {
-            return kind.name().toLowerCase(java.util.Locale.ROOT) + "Count";
-        }
-
-        private static void nonNegative(int count) {
-            if (count < 0) {
-                throw new IllegalArgumentException("Statement counts must be non-negative.");
-            }
-        }
-
         @Override
         public CollectionExpect.Builder as(String description) {
             this.description = Objects.requireNonNull(description, "description");
+            return this;
+        }
+
+        @Override
+        public CollectionExpect.Builder redaction(Redaction redaction) {
+            this.redaction = Objects.requireNonNull(redaction, "redaction");
             return this;
         }
 
@@ -277,7 +283,17 @@ final class DefaultCollectionExpect implements CollectionExpect {
             if (rules.isEmpty()) {
                 throw new IllegalStateException("Declare at least one collection check before building.");
             }
-            return new DefaultCollectionExpect(specs, description, rules);
+            return new DefaultCollectionExpect(specs, description, rules, redaction);
+        }
+
+        private static String label(Kind kind) {
+            return kind.name().toLowerCase(java.util.Locale.ROOT) + "Count";
+        }
+
+        private static void nonNegative(int count) {
+            if (count < 0) {
+                throw new IllegalArgumentException("Statement counts must be non-negative.");
+            }
         }
 
         private CollectionExpect.Builder kindCount(int count, Kind kind) {

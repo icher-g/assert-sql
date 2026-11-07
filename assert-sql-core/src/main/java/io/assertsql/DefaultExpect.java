@@ -23,11 +23,17 @@ final class DefaultExpect implements Expect {
     private final Supplier<Specs> specs;
     private final String description;
     private final List<Function<ParseContext, ParameterizedCheck>> requirements;
+    private final Redaction redaction;
+    private final List<String> diagnosticSources;
+    private final List<Object> expectedBindings;
 
-    private DefaultExpect(Supplier<Specs> specs, String description, List<Function<ParseContext, ParameterizedCheck>> requirements) {
-        this.specs = specs;
-        this.description = description;
+    private DefaultExpect(Builder builder, List<Function<ParseContext, ParameterizedCheck>> requirements) {
+        this.specs = builder.specs;
+        this.description = builder.description;
         this.requirements = List.copyOf(requirements);
+        this.redaction = builder.redaction;
+        this.diagnosticSources = List.copyOf(builder.diagnosticSources);
+        this.expectedBindings = java.util.Collections.unmodifiableList(new ArrayList<>(builder.expectedBindings));
     }
 
     static Expect.Builder builder(SqlDialectId dialect) {
@@ -42,36 +48,65 @@ final class DefaultExpect implements Expect {
 
     @Override
     public Match evaluate(ParameterizedSql input) {
+        return evaluate(input, null);
+    }
+
+    Match evaluate(ParameterizedSql input, Redaction override) {
         Objects.requireNonNull(input, "input");
         var context = ParseContext.of(specs.get());
+        var diagnostics = diagnostics(context, override, input);
         var actual = context.parse(Statement.class, input.sql());
         var mismatches = new ArrayList<Mismatch>();
         if (!actual.ok()) {
             for (var problem : actual.problems()) {
-                mismatches.add(new Mismatch("PARSE_ERROR", "sql[" + problem.pos() + "]", problem.message()));
+                mismatches.add(diagnostics.sanitize(new Mismatch("PARSE_ERROR", "sql[" + problem.pos() + "]", problem.message())));
             }
         }
         else {
-            return prepare(context).apply(actual.value(), input);
+            return prepare(context, override, input).apply(actual.value(), input);
         }
         var match = Match.of(mismatches);
-        return description == null ? match : new DescribedMatch(description, match);
+        return description == null ? match : new DescribedMatch(diagnostics.description(description), match);
     }
 
-    BiFunction<Statement, ParameterizedSql, Match> prepare(ParseContext context) {
+    BiFunction<Statement, ParameterizedSql, Match> prepare(ParseContext context, Redaction override) {
+        return prepare(context, override, ParameterizedSql.of(""));
+    }
+
+    private BiFunction<Statement, ParameterizedSql, Match> prepare(ParseContext context, Redaction override, ParameterizedSql preparingInput) {
         // Prepare the full declaration before invoking any custom checks.
-        var checks = requirements.stream()
-            .map(requirement -> requirement.apply(context))
-            .toList();
+        List<ParameterizedCheck> checks;
+        try {
+            checks = requirements.stream()
+                .map(requirement -> requirement.apply(context))
+                .toList();
+        }
+        catch (InvalidExpectationException failure) {
+            throw diagnostics(context, override, preparingInput).configuration(failure);
+        }
         return (statement, input) -> {
+            var diagnostics = diagnostics(context, override, input);
             var mismatches = new ArrayList<Mismatch>();
-            var bindings = new BindingContext(input, statement);
+            var bindings = new BindingContext(input, statement, diagnostics);
             for (var check : checks) {
                 mismatches.addAll(List.copyOf(check.evaluate(statement, bindings)));
             }
-            var match = Match.of(mismatches);
-            return description == null ? match : new DescribedMatch(description, match);
+            var safe = mismatches.stream()
+                .map(diagnostics::sanitize)
+                .toList();
+            var match = Match.of(safe);
+            return description == null ? match : new DescribedMatch(diagnostics.description(description), match);
         };
+    }
+
+    private DiagnosticContext diagnostics(ParseContext context, Redaction override, ParameterizedSql input) {
+        return new DiagnosticContext(
+            override == null ? redaction : override,
+            context.identifierQuoting(),
+            diagnosticSources,
+            expectedBindings,
+            input
+        );
     }
 
     private static final class Builder implements Expect.Builder {
@@ -81,6 +116,9 @@ final class DefaultExpect implements Expect {
         private final List<Function<ParseContext, ParameterizedCheck>> requirements = new ArrayList<>();
         private final Set<BindingContext.Slot> parameters = new LinkedHashSet<>();
         private boolean matchAllParameters;
+        private Redaction redaction = Redaction.BINDINGS;
+        private final List<String> diagnosticSources = new ArrayList<>();
+        private final List<Object> expectedBindings = new ArrayList<>();
         private String description;
 
         private Builder(Supplier<Specs> specs, Supplier<SqlDialect> renderer) {
@@ -96,6 +134,15 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder as(String description) {
             this.description = Objects.requireNonNull(description, "description");
+            return this;
+        }
+
+        @Override
+        public Expect.Builder redaction(Redaction redaction) {
+            if (localReferences) {
+                throw new IllegalStateException("Configure redaction on the root expectation, outside query scopes.");
+            }
+            this.redaction = Objects.requireNonNull(redaction, "redaction");
             return this;
         }
 
@@ -127,7 +174,7 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder select() {
-            return satisfies(statement ->
+            return checked(statement ->
                 statement instanceof Query
                     ? List.of()
                     : List.of(new Mismatch("NOT_SELECT", "statement", "Expected a SELECT query."))
@@ -186,7 +233,7 @@ final class DefaultExpect implements Expect {
         public Expect.Builder noJoin() {
             var local = localReferences;
             var message = local ? "Expected no joins at the selected query level." : "Expected no joins, including in nested queries.";
-            return satisfies(statement ->
+            return checked(statement ->
                 ModelInspector.joins(statement, local).isEmpty()
                     ? List.of()
                     : List.of(new Mismatch("JOIN_PRESENT", "statement", message))
@@ -250,7 +297,7 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noOrderBy() {
-            return satisfies(
+            return checked(
                 outerClause(statement ->
                     result(ModelInspector.orderBy(statement) == null, "ORDER_BY_PRESENT", "statement.orderBy", "Expected no outer ORDER BY.")
                 )
@@ -260,7 +307,7 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder limit(long count) {
             nonNegative(count);
-            return satisfies(
+            return checked(
                 outerClause(statement ->
                     result(
                         literalCount(ModelInspector.limit(statement), count),
@@ -274,7 +321,7 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noLimit() {
-            return satisfies(
+            return checked(
                 outerClause(statement ->
                     result(!ModelInspector.hasLimit(statement), "LIMIT_PRESENT", "statement.limit", "Expected no outer limit specification.")
                 )
@@ -284,7 +331,7 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder offset(long count) {
             nonNegative(count);
-            return satisfies(
+            return checked(
                 outerClause(statement ->
                     result(
                         literalCount(ModelInspector.offset(statement), count),
@@ -298,7 +345,7 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noOffset() {
-            return satisfies(
+            return checked(
                 outerClause(statement ->
                     result(ModelInspector.offset(statement) == null, "OFFSET_PRESENT", "statement.offset", "Expected no outer offset specification.")
                 )
@@ -385,7 +432,7 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noWhere() {
-            return satisfies(statement ->
+            return checked(statement ->
                 ModelInspector.outerWhere(statement) == null
                     ? List.of()
                     : List.of(new Mismatch("WHERE_PRESENT", "statement.where", "Expected no outer WHERE predicate."))
@@ -395,27 +442,32 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder noSelectStar() {
             var local = localReferences;
-            return satisfies(statement -> SelectStars.find(statement, local));
+            return checked(statement -> SelectStars.find(statement, local));
         }
 
         @Override
         public Expect.Builder structurallyEquals(String expectedSql) {
             Objects.requireNonNull(expectedSql, "expectedSql");
+            diagnosticSources.add(expectedSql);
             var dialect = renderer;
-            return append(context -> {
+            requirements.add(context -> {
                 var parsed = context.parse(Statement.class, expectedSql);
                 if (!parsed.ok()) {
-                    throw new IllegalArgumentException("Invalid expected SQL: " + parsed.errorMessage());
+                    throw new InvalidExpectationException("Invalid expected SQL: " + parsed.errorMessage());
                 }
                 var expected = parsed.value();
-                return actual -> expected.equals(actual) ? List.of() : List.of(StructureDifference.between(expected, actual, dialect.get()));
+                return (actual, bindings) -> expected.equals(actual) ? List.of() : List.of(
+                    StructureDifference.between(expected, actual, dialect.get(), bindings.diagnostics().redaction())
+                );
             });
+            return this;
         }
 
         @Override
         public Expect.Builder satisfies(Check check) {
             Objects.requireNonNull(check, "check");
-            return append(context -> check);
+            requirements.add(context -> (statement, bindings) -> bindings.diagnostics().custom(check.evaluate(statement)));
+            return this;
         }
 
         @Override
@@ -429,7 +481,7 @@ final class DefaultExpect implements Expect {
                 var local = localReferences;
                 snapshot.add(context -> (statement, bindings) -> bindings.matchAll(statement, local, expected));
             }
-            return new DefaultExpect(specs, description, snapshot);
+            return new DefaultExpect(this, snapshot);
         }
 
         private Expect.Builder namedScope(
@@ -442,10 +494,11 @@ final class DefaultExpect implements Expect {
             if (name.isBlank()) {
                 throw new IllegalArgumentException(kind + " must not be blank.");
             }
+            diagnosticSources.add(name);
             return scope(context -> {
                 var table = parseExpected(context, Table.class, name, kind);
                 if (table.schema() != null || table.alias() != null) {
-                    throw new IllegalArgumentException("Expected an unqualified identifier for " + kind + ": " + name);
+                    throw new InvalidExpectationException("Expected an unqualified identifier for " + kind + ": " + name);
                 }
                 return statement -> select.apply(statement, table.name());
             }, declaration);
@@ -457,6 +510,8 @@ final class DefaultExpect implements Expect {
             declaration.accept(child);
             var snapshot = (DefaultExpect) child.build();
             parameters.addAll(child.parameters);
+            diagnosticSources.addAll(snapshot.diagnosticSources);
+            expectedBindings.addAll(snapshot.expectedBindings);
             requirements.add(context -> {
                 var select = prepare.apply(context);
                 var checks = snapshot.requirements.stream()
@@ -470,7 +525,7 @@ final class DefaultExpect implements Expect {
         private static <T extends Node> T parseExpected(ParseContext context, Class<T> type, String sql, String kind) {
             var parsed = context.parse(type, sql);
             if (!parsed.ok()) {
-                throw new IllegalArgumentException("Invalid expected " + kind + ": " + parsed.errorMessage());
+                throw new InvalidExpectationException("Invalid expected " + kind + ": " + parsed.errorMessage());
             }
             var expected = parsed.value();
             if (
@@ -482,7 +537,7 @@ final class DefaultExpect implements Expect {
                             || table.partitionSpec() != null
                     )
             ) {
-                throw new IllegalArgumentException("Expected a table reference without hints or modifiers: " + sql);
+                throw new InvalidExpectationException("Expected a table reference without hints or modifiers: " + sql);
             }
             return expected;
         }
@@ -538,19 +593,25 @@ final class DefaultExpect implements Expect {
 
         private <T extends Node> Expect.Builder orderedItems(String[] items, String kind, Class<T> type, Function<Statement, List<T>> inspect) {
             var snapshot = fragments(items, kind);
+            diagnosticSources.addAll(snapshot);
             var dialect = renderer;
-            return append(context -> {
-                var expected = snapshot.stream().map(item -> parseExpected(context, type, item, kind)).toList();
-                Check check = statement -> {
-                    var actual = inspect.apply(statement);
-                    if (expected.equals(actual)) {
-                        return List.of();
-                    }
-                    var difference = StructureDifference.between(expected, actual, dialect.get());
-                    return List.of(new Mismatch(kind.toUpperCase(Locale.ROOT) + "_MISMATCH", difference.path(), difference.message()));
+            requirements.add(context -> {
+                var expected = snapshot.stream()
+                    .map(item -> parseExpected(context, type, item, kind))
+                    .toList();
+                return (statement, bindings) -> {
+                    Check check = selected -> {
+                        var actual = inspect.apply(selected);
+                        if (expected.equals(actual)) {
+                            return List.of();
+                        }
+                        var difference = StructureDifference.between(expected, actual, dialect.get(), bindings.diagnostics().redaction());
+                        return List.of(new Mismatch(kind.toUpperCase(Locale.ROOT) + "_MISMATCH", difference.path(), difference.message()));
+                    };
+                    return kind.equals("order_by") ? outerClause(check).evaluate(statement) : check.evaluate(statement);
                 };
-                return kind.equals("order_by") ? outerClause(check) : check;
             });
+            return this;
         }
 
         private Expect.Builder namedParameters(String[] names, boolean forbidden) {
@@ -565,7 +626,7 @@ final class DefaultExpect implements Expect {
                 if (!forbidden) {
                     parameters.add(new BindingContext.Slot(BindingContext.Kind.NAMED, name));
                 }
-                satisfies(statement -> {
+                checked(statement -> {
                     boolean present = ModelInspector.parameters(statement, local)
                         .named()
                         .stream()
@@ -585,7 +646,7 @@ final class DefaultExpect implements Expect {
         private Expect.Builder parametersCount(int count, boolean positionalOnly) {
             nonNegative(count);
             var local = localReferences;
-            return satisfies(statement -> {
+            return checked(statement -> {
                 var parameters = ModelInspector.parameters(statement, local);
                 int actual = parameters.positional().size() + (positionalOnly ? 0 : parameters.named().size());
                 return result(
@@ -605,11 +666,16 @@ final class DefaultExpect implements Expect {
             return this;
         }
 
+        private Expect.Builder checked(Check check) {
+            return append(context -> check);
+        }
+
         private Expect.Builder binding(BindingContext.Slot slot, Object value, boolean absent) {
             var expected = BindingValues.copy(value);
             var local = localReferences;
             if (!absent) {
                 parameters.add(slot);
+                expectedBindings.add(expected);
             }
             requirements.add(context -> (statement, bindings) -> bindings.value(statement, local, slot, expected, absent));
             return this;
@@ -623,16 +689,19 @@ final class DefaultExpect implements Expect {
             BiPredicate<Statement, T> contains
         ) {
             var snapshot = fragments(fragments, kind);
+            diagnosticSources.addAll(snapshot);
+            var dialect = renderer;
             for (var fragment : snapshot) {
-                append(context -> {
+                requirements.add(context -> {
                     var expected = parseExpected(context, type, fragment, kind);
-                    return statement -> {
+                    return (statement, bindings) -> {
                         boolean present = contains.test(statement, expected);
                         if (present != forbidden) {
                             return List.of();
                         }
                         var code = kind.toUpperCase(Locale.ROOT) + (forbidden ? "_PRESENT" : "_NOT_REFERENCED");
-                        var message = (forbidden ? "Unexpected " : "Expected ") + kind + " <" + fragment + ">.";
+                        var actual = StructureDifference.sql(statement, dialect.get(), bindings.diagnostics().redaction());
+                        var message = (forbidden ? "Unexpected " : "Expected ") + kind + " <" + fragment + ">. Actual SQL <" + actual + ">.";
                         return List.of(new Mismatch(code, "statement", message));
                     };
                 });
@@ -645,7 +714,9 @@ final class DefaultExpect implements Expect {
 record DescribedMatch(String description, Match delegate) implements Match {
     @Override
     public List<Mismatch> mismatches() {
-        return delegate.mismatches();
+        return delegate.mismatches().stream()
+            .map(mismatch -> mismatch.withDescription(description))
+            .toList();
     }
 
     @Override
