@@ -12,5 +12,9 @@
  * <p>{@link io.assertsql.ParameterizedSql} carries optional caller-supplied binding values alongside SQL.
  * Binding checks use SQM parameter nodes; placeholder-presence and occurrence-count checks keep
  * their existing meanings. Values are never substituted into SQL or sent to a database.</p>
+ *
+ * <p>{@link io.assertsql.CollectionExpect} inspects caller-supplied statement lists with explicit
+ * statement-kind counts and matching rules. All members are parsed before quantification, so invalid
+ * SQL cannot establish absence. Capture and execution remain application responsibilities.</p>
  */
 package io.assertsql;
