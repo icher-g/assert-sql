@@ -31,6 +31,19 @@ public interface Expect {
     }
 
     /**
+     * Starts a declaration over an ordered collection of caller-supplied SQL strings.
+     * The collection dialect parses every statement before collection requirements run.
+     * No statements are captured or executed by the library.
+     *
+     * @param dialect supported SQM parsing dialect
+     * @return a mutable collection builder with a private implementation
+     * @throws IllegalArgumentException if the dialect is unsupported
+     */
+    static CollectionExpect.Builder statements(SqlDialectId dialect) {
+        return DefaultCollectionExpect.builder(dialect);
+    }
+
+    /**
      * Combines built expectations using OR. Alternatives are evaluated in order
      * until one matches. If none matches, diagnostics identify each alternative.
      * Each evaluated alternative parses SQL in its own configured dialect.

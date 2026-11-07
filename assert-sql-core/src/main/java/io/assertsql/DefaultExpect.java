@@ -2,19 +2,9 @@ package io.assertsql;
 
 import io.sqm.core.*;
 import io.sqm.core.dialect.SqlDialectId;
-import io.sqm.parser.ansi.AnsiSpecs;
-import io.sqm.parser.mysql.spi.MySqlSpecs;
-import io.sqm.parser.oracle.spi.OracleSpecs;
-import io.sqm.parser.postgresql.spi.PostgresSpecs;
 import io.sqm.parser.spi.ParseContext;
 import io.sqm.parser.spi.Specs;
-import io.sqm.parser.sqlserver.spi.SqlServerSpecs;
-import io.sqm.render.ansi.spi.AnsiDialect;
-import io.sqm.render.mysql.spi.MySqlDialect;
-import io.sqm.render.oracle.spi.OracleDialect;
-import io.sqm.render.postgresql.spi.PostgresDialect;
 import io.sqm.render.spi.SqlDialect;
-import io.sqm.render.sqlserver.spi.SqlServerDialect;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -41,14 +31,8 @@ final class DefaultExpect implements Expect {
     }
 
     static Expect.Builder builder(SqlDialectId dialect) {
-        return switch (dialect.value()) {
-            case "ansi" -> new Builder(AnsiSpecs::new, AnsiDialect::new);
-            case "postgresql" -> new Builder(PostgresSpecs::new, PostgresDialect::new);
-            case "mysql" -> new Builder(MySqlSpecs::new, MySqlDialect::new);
-            case "sqlserver" -> new Builder(SqlServerSpecs::new, SqlServerDialect::new);
-            case "oracle" -> new Builder(OracleSpecs::new, OracleDialect::new);
-            default -> throw new IllegalArgumentException("Unsupported SQL dialect: " + dialect.value());
-        };
+        var support = SqlDialects.of(dialect);
+        return new Builder(support.parser(), support.renderer());
     }
 
     @Override
@@ -68,17 +52,26 @@ final class DefaultExpect implements Expect {
             }
         }
         else {
-            // Prepare the full declaration before invoking any custom checks.
-            var checks = requirements.stream()
-                .map(requirement -> requirement.apply(context))
-                .toList();
-            var bindings = new BindingContext(input, actual.value());
-            for (var check : checks) {
-                mismatches.addAll(List.copyOf(check.evaluate(actual.value(), bindings)));
-            }
+            return prepare(context).apply(actual.value(), input);
         }
         var match = Match.of(mismatches);
         return description == null ? match : new DescribedMatch(description, match);
+    }
+
+    BiFunction<Statement, ParameterizedSql, Match> prepare(ParseContext context) {
+        // Prepare the full declaration before invoking any custom checks.
+        var checks = requirements.stream()
+            .map(requirement -> requirement.apply(context))
+            .toList();
+        return (statement, input) -> {
+            var mismatches = new ArrayList<Mismatch>();
+            var bindings = new BindingContext(input, statement);
+            for (var check : checks) {
+                mismatches.addAll(List.copyOf(check.evaluate(statement, bindings)));
+            }
+            var match = Match.of(mismatches);
+            return description == null ? match : new DescribedMatch(description, match);
+        };
     }
 
     private static final class Builder implements Expect.Builder {
