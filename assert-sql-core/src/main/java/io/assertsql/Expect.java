@@ -235,11 +235,36 @@ public interface Expect {
         Builder exists(int index, Consumer<Builder> declaration);
 
         /**
-         * Requires a query, including WITH queries and SELECT set operations.
+         * Requires an outer query, including SELECT set operations and WITH wrapping a query.
+         * Nested SELECTs in DML do not change the outer statement's kind.
          *
          * @return this builder
          */
         Builder select();
+
+        /**
+         * Requires an outer INSERT, including INSERT SELECT. Nested queries do not change the kind.
+         * @return this builder
+         */
+        Builder insert();
+
+        /**
+         * Requires an outer UPDATE. In a scope block, checks the selected body's kind.
+         * @return this builder
+         */
+        Builder update();
+
+        /**
+         * Requires an outer DELETE, using the same outer-body rules as select().
+         * @return this builder
+         */
+        Builder delete();
+
+        /**
+         * Requires an outer MERGE supported by the configured SQM parser.
+         * @return this builder
+         */
+        Builder merge();
 
         /**
          * Requires a named table reference collected by SQM, including CTE
@@ -414,6 +439,66 @@ public interface Expect {
          * @return this builder
          */
         Builder exactProjection(String... items);
+
+        /**
+         * Requires any GROUP BY on the selected outer SELECT, without constraining its items.
+         * Does not search CTEs, subqueries, or set-operation terms.
+         * @return this builder
+         */
+        Builder groupBy();
+
+        /**
+         * Requires the exact ordered GROUP BY item list, using SQM equality and preserving duplicates.
+         * Each argument is one item, including a complete ROLLUP, CUBE, grouping set, or GROUPING SETS.
+         * No partial-list, semantic reordering, or grouping expansion is performed. Fragments are parsed only
+         * during evaluation in the configured dialect. WITH uses its body; set terms and nested queries are excluded.
+         * @param items one or more non-null grouping items, without GROUP BY
+         * @return this builder
+         */
+        Builder groupBy(String... items);
+
+        /**
+         * Requires no GROUP BY on the selected outer body. Branch/nested grouping does not count.
+         * @return this builder
+         */
+        Builder noGroupBy();
+
+        /**
+         * Requires structural equality with the complete selected outer SELECT's HAVING predicate.
+         * Does not imply subtree containment, logical implication, or schema/aggregate validation.
+         * @param predicate non-null complete predicate without HAVING, parsed only during evaluation
+         * @return this builder
+         */
+        Builder having(String predicate);
+
+        /**
+         * Requires no HAVING on the selected outer body; nested and set-branch predicates are excluded.
+         * @return this builder
+         */
+        Builder noHaving();
+
+        /**
+         * Requires plain SELECT DISTINCT. DISTINCT ON, aggregate DISTINCT, and UNION deduplication do not match.
+         * @return this builder
+         */
+        Builder distinct();
+
+        /**
+         * Requires DISTINCT ON with the exact ordered expression list, using SQM equality.
+         * Plain DISTINCT does not match. The expected clause and each expression are parsed during evaluation,
+         * with SQM's dialect feature gate; no PostgreSQL semantics are invented for another dialect.
+         * @param expressions one or more non-null individual expressions, without DISTINCT ON
+         * @return this builder
+         */
+        Builder distinctOn(String... expressions);
+
+        /**
+         * Requires neither plain DISTINCT nor DISTINCT ON on the selected outer body.
+         * DISTINCT in aggregate arguments or set branches does not count. A body with no outer SELECT modifier
+         * satisfies this absence check; use select() as well to require a query kind.
+         * @return this builder
+         */
+        Builder noDistinct();
 
         /**
          * Requires the complete outer ORDER BY list in the given order, using SQM

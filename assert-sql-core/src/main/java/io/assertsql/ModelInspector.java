@@ -73,6 +73,23 @@ final class ModelInspector {
         };
     }
 
+    static GroupBy groupBy(Statement statement) {
+        return outerBody(statement) instanceof SelectQuery select ? select.groupBy() : null;
+    }
+
+    static List<GroupItem> groupItems(Statement statement) {
+        var groupBy = groupBy(statement);
+        return groupBy == null ? List.of() : groupBy.items();
+    }
+
+    static Predicate having(Statement statement) {
+        return outerBody(statement) instanceof SelectQuery select ? select.having() : null;
+    }
+
+    static DistinctSpec distinct(Statement statement) {
+        return outerBody(statement) instanceof SelectQuery select ? select.distinct() : null;
+    }
+
     static boolean ambiguousSetTail(Statement statement) {
         if (!(outerBody(statement) instanceof CompositeQuery composite)) {
             return false;

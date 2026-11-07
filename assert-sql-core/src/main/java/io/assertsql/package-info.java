@@ -20,5 +20,8 @@
  * <p>{@link io.assertsql.Redaction} controls diagnostic disclosure without changing matching.
  * Default diagnostics retain SQL literal detail and hide binding values. Full redaction uses SQM
  * metadata and omits unsafe detail. Structured descriptions remain independent of codes and paths.</p>
+ *
+ * <p>Grouping, HAVING, and DISTINCT checks inspect only the selected outer SELECT.
+ * Statement-kind checks classify its outer body, independently of nested queries or CTE writes.</p>
  */
 package io.assertsql;

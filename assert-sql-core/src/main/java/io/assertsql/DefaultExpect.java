@@ -174,11 +174,27 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder select() {
-            return checked(statement ->
-                statement instanceof Query
-                    ? List.of()
-                    : List.of(new Mismatch("NOT_SELECT", "statement", "Expected a SELECT query."))
-            );
+            return statementKind(StatementKind.SELECT);
+        }
+
+        @Override
+        public Expect.Builder insert() {
+            return statementKind(StatementKind.INSERT);
+        }
+
+        @Override
+        public Expect.Builder update() {
+            return statementKind(StatementKind.UPDATE);
+        }
+
+        @Override
+        public Expect.Builder delete() {
+            return statementKind(StatementKind.DELETE);
+        }
+
+        @Override
+        public Expect.Builder merge() {
+            return statementKind(StatementKind.MERGE);
         }
 
         @Override
@@ -285,6 +301,57 @@ final class DefaultExpect implements Expect {
         @Override
         public Expect.Builder exactProjection(String... items) {
             return orderedItems(items, "projection", SelectItem.class, ModelInspector::projection);
+        }
+
+        @Override
+        public Expect.Builder groupBy() {
+            return checked(statement ->
+                result(ModelInspector.groupBy(statement) != null, "GROUP_BY_MISSING", "statement.groupBy", "Expected an outer GROUP BY clause.")
+            );
+        }
+
+        @Override
+        public Expect.Builder groupBy(String... items) {
+            return orderedItems(items, "group_by", GroupItem.class, ModelInspector::groupItems);
+        }
+
+        @Override
+        public Expect.Builder noGroupBy() {
+            return absentClause("GROUP_BY", "statement.groupBy", ModelInspector::groupBy);
+        }
+
+        @Override
+        public Expect.Builder having(String predicate) {
+            return clause("HAVING", Predicate.class, Objects.requireNonNull(predicate, "predicate"), ModelInspector::having);
+        }
+
+        @Override
+        public Expect.Builder noHaving() {
+            return absentClause("HAVING", "statement.having", ModelInspector::having);
+        }
+
+        @Override
+        public Expect.Builder distinct() {
+            return clause("DISTINCT", DistinctSpec.class, "DISTINCT", ModelInspector::distinct);
+        }
+
+        @Override
+        public Expect.Builder distinctOn(String... expressions) {
+            var snapshot = fragments(expressions, "DISTINCT ON expression");
+            diagnosticSources.addAll(snapshot);
+            requirements.add(context -> {
+                for (var expression : snapshot) {
+                    parseExpected(context, Expression.class, expression, "DISTINCT ON expression");
+                }
+                var expected = parseExpected(context, DistinctSpec.class, "DISTINCT ON (" + String.join(", ", snapshot) + ")", "DISTINCT ON");
+                return clauseCheck("DISTINCT_ON", expected, ModelInspector::distinct);
+            });
+            return this;
+        }
+
+        @Override
+        public Expect.Builder noDistinct() {
+            return absentClause("DISTINCT", "statement.distinct", ModelInspector::distinct);
         }
 
         @Override
@@ -482,6 +549,55 @@ final class DefaultExpect implements Expect {
                 snapshot.add(context -> (statement, bindings) -> bindings.matchAll(statement, local, expected));
             }
             return new DefaultExpect(this, snapshot);
+        }
+
+        private Expect.Builder statementKind(StatementKind kind) {
+            return checked(statement ->
+                result(
+                    kind.matches(statement),
+                    "NOT_" + kind.name(),
+                    "statement",
+                    "Expected " + kind.name() + " statement but was " + StatementKind.of(statement).name() + "."
+                )
+            );
+        }
+
+        private <T extends Node> Expect.Builder clause(String kind, Class<T> type, String expectedSql, Function<Statement, T> inspect) {
+            diagnosticSources.add(expectedSql);
+            requirements.add(context -> clauseCheck(kind, parseExpected(context, type, expectedSql, kind), inspect));
+            return this;
+        }
+
+        private ParameterizedCheck clauseCheck(String kind, Node expected, Function<Statement, ? extends Node> inspect) {
+            var dialect = renderer;
+            return (statement, bindings) -> {
+                var actual = inspect.apply(statement);
+                if (expected.equals(actual)) {
+                    return List.of();
+                }
+                if (expected instanceof DistinctSpec) {
+                    var policy = bindings.diagnostics().redaction();
+                    var left = StructureDifference.sql(expected, dialect.get(), policy);
+                    var right = actual == null ? "absent" : StructureDifference.sql(actual, dialect.get(), policy);
+                    var suffix = policy == Redaction.ALL && left.equals(right) ? " Literal values differ (redacted)." : "";
+                    return List.of(new Mismatch(kind + "_MISMATCH", "", "Expected SQL <" + left + "> but was <" + right + ">." + suffix));
+                }
+                var difference = StructureDifference.between(expected, actual, dialect.get(), bindings.diagnostics().redaction());
+                return List.of(new Mismatch(kind + "_MISMATCH", difference.path(), difference.message(), difference.descriptions()));
+            };
+        }
+
+        private Expect.Builder absentClause(String kind, String path, Function<Statement, ? extends Node> inspect) {
+            var dialect = renderer;
+            requirements.add(context -> (statement, bindings) -> {
+                var actual = inspect.apply(statement);
+                if (actual == null) {
+                    return List.of();
+                }
+                var sql = StructureDifference.sql(actual, dialect.get(), bindings.diagnostics().redaction());
+                return List.of(new Mismatch(kind + "_PRESENT", path, "Expected no outer " + kind.replace('_', ' ') + ". Actual SQL <" + sql + ">."));
+            });
+            return this;
         }
 
         private Expect.Builder namedScope(

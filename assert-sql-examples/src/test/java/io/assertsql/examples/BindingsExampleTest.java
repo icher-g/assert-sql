@@ -20,6 +20,7 @@ class BindingsExampleTest {
          */
         var sql = JooqUserQueries.newUser(42L, "Ada").getSQL(ParamType.NAMED);
         Expect.sql(POSTGRESQL)
+            .insert()
             .parameter("tenantId", "userName")
             .matchAllParameters()
             .build()
@@ -42,6 +43,7 @@ class BindingsExampleTest {
         var input = ParameterizedSql.named(query.getSQL(ParamType.NAMED), values);
         var expectation = Expect.sql(POSTGRESQL)
             .as("new user bindings")
+            .insert()
             .table("users")
             .parameterCount(2)
             .binding("tenantId", 42L)
@@ -77,6 +79,7 @@ class BindingsExampleTest {
         var sql = query.getSQL(ParamType.INDEXED);
         var expectation = Expect.sql(POSTGRESQL)
             .as("new user positional bindings")
+            .insert()
             .table("users")
             .positionalParameterCount(2)
             .positionalBinding(1, 42L)
