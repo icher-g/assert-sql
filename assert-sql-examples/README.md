@@ -49,7 +49,7 @@ latest timestamp. The example checks `distinctOn("o.customer_id")` and its
 explicit ordering, and verifies that the plain `distinct()` expectation fails.
 GROUP BY compares the exact ordered list when items are supplied; HAVING compares
 the whole predicate. These assertions do not perform aggregate/schema validation
-or prove result correctness. See the [clause and scope contracts](../README.md#reporting-clauses-and-statement-kinds)
+or prove result correctness. See the [clause and scope contracts](https://github.com/icher-g/assert-sql/wiki/Reporting-Queries-and-Statement-Kinds)
 for grouping extensions, set queries, absence checks, and dialect boundaries.
 
 The existing [binding examples](src/test/java/io/assertsql/examples/BindingsExampleTest.java)
@@ -71,7 +71,7 @@ Expectation construction and the SQL comment are inline in the test. Structured
 from `path()`. The ordinary three-argument diagnostic constructor remains usable.
 By default, SQL literal detail remains visible and binding values remain hidden.
 Full redaction and an explicit opt-in to binding value detail are described in the
-[diagnostic policy guide](../README.md#diagnostic-detail-and-redaction).
+[diagnostic policy guide](https://github.com/icher-g/assert-sql/wiki/Diagnostics-and-Redaction).
 
 ## Counts over real captured statements
 
@@ -107,7 +107,7 @@ The existing compact `column=?` parser boundary remains documented below.
 All ORM execution belongs to the example fixture; Assert SQL only inspects the
 supplied snapshot. Count budgets require an explicit capture window and known
 expected counts. They can catch unexpected extra queries in that window, but
-Assert SQL does not infer N+1 behavior from SQL text. See [collection contracts](../README.md#assert-captured-statement-collections)
+Assert SQL does not infer N+1 behavior from SQL text. See [collection contracts](https://github.com/icher-g/assert-sql/wiki/Statement-Collections)
 for empty-input semantics, parse errors, ordering, and advanced any/all/none rules.
 
 ## Supplied binding values without execution
@@ -134,7 +134,7 @@ to `ParameterizedSql.positional(...)`. It checks both one-based positions and de
 that reversing the values fails while the SQL remains identical. SQM traversal
 matches jOOQ's bind order for this VALUES clause. It can differ for pagination or
 TOP expressions; raw tool lists are usable only where the orders agree. See
-[binding contracts and ownership](../README.md#assert-supplied-parameter-bindings)
+[binding contracts and ownership](https://github.com/icher-g/assert-sql/wiki/Parameter-Bindings)
 for anonymous ordering, ordinal indices, repeated slots, nulls, and comparison rules.
 
 The tests render SQL and extract values without a connection or execution. These
@@ -160,7 +160,7 @@ verifies SQM's `COLUMN_NOT_FOUND` diagnostic for `x.user_id`.
 
 These tests use no connection, JDBC execution, or schema introspection. The catalog
 is caller-owned test data. SQM's validation coverage applies, including its current
-derived-output-column limitation; see the [validation API and boundaries](../README.md#validate-against-a-supplied-catalog).
+derived-output-column limitation; see the [validation API and boundaries](https://github.com/icher-g/assert-sql/wiki/Catalog-Validation).
 The validation dependency is test-scoped here and does not enter the core module.
 
 ## The contract

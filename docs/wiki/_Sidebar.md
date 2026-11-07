@@ -1,0 +1,18 @@
+[Assert SQL](https://github.com/icher-g/assert-sql/wiki)
+
+- [Getting started](https://github.com/icher-g/assert-sql/wiki/Getting-Started)
+- [Built-in checks](https://github.com/icher-g/assert-sql/wiki/Built-in-Checks)
+- [Structural equality](https://github.com/icher-g/assert-sql/wiki/Structural-Equality)
+- [Query scopes](https://github.com/icher-g/assert-sql/wiki/Query-Scopes)
+- [Reporting and statement kinds](https://github.com/icher-g/assert-sql/wiki/Reporting-Queries-and-Statement-Kinds)
+- [Joins, projection, and pagination](https://github.com/icher-g/assert-sql/wiki/Joins-Projection-and-Pagination)
+- [Combining expectations](https://github.com/icher-g/assert-sql/wiki/Combining-Expectations)
+- [Parameter bindings](https://github.com/icher-g/assert-sql/wiki/Parameter-Bindings)
+- [Statement collections](https://github.com/icher-g/assert-sql/wiki/Statement-Collections)
+- [Catalog validation](https://github.com/icher-g/assert-sql/wiki/Catalog-Validation)
+- [Diagnostics and redaction](https://github.com/icher-g/assert-sql/wiki/Diagnostics-and-Redaction)
+- [Custom checks](https://github.com/icher-g/assert-sql/wiki/Custom-Checks)
+- [Hibernate SQL capture](https://github.com/icher-g/assert-sql/wiki/Hibernate)
+- [SQM compatibility](https://github.com/icher-g/assert-sql/wiki/Compatibility)
+
+[Runnable examples](https://github.com/icher-g/assert-sql/blob/main/assert-sql-examples/README.md)
