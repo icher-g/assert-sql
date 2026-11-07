@@ -155,25 +155,10 @@ final class DefaultCollectionExpect implements CollectionExpect {
         TOTAL, EXACT, ANY, ALL, NONE
     }
 
-    private enum Kind {
-        SELECT, INSERT, UPDATE, DELETE, MERGE;
-
-        boolean matches(Statement statement) {
-            var body = ModelInspector.outerBody(statement);
-            return switch (this) {
-                case SELECT -> body instanceof Query;
-                case INSERT -> body instanceof InsertStatement;
-                case UPDATE -> body instanceof UpdateStatement;
-                case DELETE -> body instanceof DeleteStatement;
-                case MERGE -> body instanceof MergeStatement;
-            };
-        }
-    }
-
     private record Entry(String sql, Statement statement) {
     }
 
-    private record Rule(String label, Mode mode, int count, Kind kind, DefaultExpect filter, Expect expectation) {
+    private record Rule(String label, Mode mode, int count, StatementKind kind, DefaultExpect filter, Expect expectation) {
     }
 
     private record PreparedRule(Rule rule, BiFunction<Statement, ParameterizedSql, Match> filter) {
@@ -210,52 +195,52 @@ final class DefaultCollectionExpect implements CollectionExpect {
 
         @Override
         public CollectionExpect.Builder selectCount(int count) {
-            return kindCount(count, Kind.SELECT);
+            return kindCount(count, StatementKind.SELECT);
         }
 
         @Override
         public CollectionExpect.Builder selectCount(int count, Consumer<Expect.Builder> declaration) {
-            return kindCount(count, Kind.SELECT, declaration);
+            return kindCount(count, StatementKind.SELECT, declaration);
         }
 
         @Override
         public CollectionExpect.Builder insertCount(int count) {
-            return kindCount(count, Kind.INSERT);
+            return kindCount(count, StatementKind.INSERT);
         }
 
         @Override
         public CollectionExpect.Builder insertCount(int count, Consumer<Expect.Builder> declaration) {
-            return kindCount(count, Kind.INSERT, declaration);
+            return kindCount(count, StatementKind.INSERT, declaration);
         }
 
         @Override
         public CollectionExpect.Builder updateCount(int count) {
-            return kindCount(count, Kind.UPDATE);
+            return kindCount(count, StatementKind.UPDATE);
         }
 
         @Override
         public CollectionExpect.Builder updateCount(int count, Consumer<Expect.Builder> declaration) {
-            return kindCount(count, Kind.UPDATE, declaration);
+            return kindCount(count, StatementKind.UPDATE, declaration);
         }
 
         @Override
         public CollectionExpect.Builder deleteCount(int count) {
-            return kindCount(count, Kind.DELETE);
+            return kindCount(count, StatementKind.DELETE);
         }
 
         @Override
         public CollectionExpect.Builder deleteCount(int count, Consumer<Expect.Builder> declaration) {
-            return kindCount(count, Kind.DELETE, declaration);
+            return kindCount(count, StatementKind.DELETE, declaration);
         }
 
         @Override
         public CollectionExpect.Builder mergeCount(int count) {
-            return kindCount(count, Kind.MERGE);
+            return kindCount(count, StatementKind.MERGE);
         }
 
         @Override
         public CollectionExpect.Builder mergeCount(int count, Consumer<Expect.Builder> declaration) {
-            return kindCount(count, Kind.MERGE, declaration);
+            return kindCount(count, StatementKind.MERGE, declaration);
         }
 
         @Override
@@ -286,7 +271,7 @@ final class DefaultCollectionExpect implements CollectionExpect {
             return new DefaultCollectionExpect(specs, description, rules, redaction);
         }
 
-        private static String label(Kind kind) {
+        private static String label(StatementKind kind) {
             return kind.name().toLowerCase(java.util.Locale.ROOT) + "Count";
         }
 
@@ -296,11 +281,11 @@ final class DefaultCollectionExpect implements CollectionExpect {
             }
         }
 
-        private CollectionExpect.Builder kindCount(int count, Kind kind) {
+        private CollectionExpect.Builder kindCount(int count, StatementKind kind) {
             return add(label(kind), Mode.EXACT, count, kind, null, null);
         }
 
-        private CollectionExpect.Builder kindCount(int count, Kind kind, Consumer<Expect.Builder> declaration) {
+        private CollectionExpect.Builder kindCount(int count, StatementKind kind, Consumer<Expect.Builder> declaration) {
             nonNegative(count);
             Objects.requireNonNull(declaration, "declaration");
             var builder = Expect.sql(dialect);
@@ -308,7 +293,7 @@ final class DefaultCollectionExpect implements CollectionExpect {
             return add(label(kind), Mode.EXACT, count, kind, (DefaultExpect) builder.build(), null);
         }
 
-        private CollectionExpect.Builder add(String label, Mode mode, int count, Kind kind, DefaultExpect filter, Expect expectation) {
+        private CollectionExpect.Builder add(String label, Mode mode, int count, StatementKind kind, DefaultExpect filter, Expect expectation) {
             nonNegative(count);
             rules.add(new Rule(label, mode, count, kind, filter, expectation));
             return this;
