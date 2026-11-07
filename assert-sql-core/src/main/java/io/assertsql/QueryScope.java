@@ -76,10 +76,23 @@ record QueryScope(Statement statement, String label, Mismatch failure) {
         return selectedExists(matches.get(index), index);
     }
 
+    private static QueryScope selectedExists(ExistsPredicate predicate, int index) {
+        var label = (predicate.negated() ? "NOT EXISTS" : "EXISTS") + " subquery[" + index + "]";
+        return new QueryScope(predicate.subquery(), label, null);
+    }
+
+    private static QueryScope missing(String label) {
+        return failure("SCOPE_NOT_FOUND", label, "No matching CTE is defined by this statement's WITH clause.");
+    }
+
+    private static QueryScope failure(String code, String label, String message) {
+        return new QueryScope(null, label, new Mismatch(code, label, message));
+    }
+
     List<Mismatch> evaluate(List<ParameterizedCheck> checks, String description, BindingContext bindings) {
-        var scope = description == null ? label : label + " [" + description + "]";
+        var scope = label;
         if (failure != null) {
-            return List.of(new Mismatch(failure.code(), scope, failure.message()));
+            return List.of(new Mismatch(failure.code(), scope, failure.message()).withDescription(description));
         }
         var mismatches = new ArrayList<Mismatch>();
         for (var check : checks) {
@@ -93,22 +106,9 @@ record QueryScope(Statement statement, String label, Mismatch failure) {
                         path = path.substring("statement.".length());
                     }
                 var location = path.isEmpty() ? scope : scope + " / " + path;
-                mismatches.add(new Mismatch(mismatch.code(), location, mismatch.message()));
+                mismatches.add(new Mismatch(mismatch.code(), location, mismatch.message(), mismatch.descriptions()).withDescription(description));
             }
         }
         return List.copyOf(mismatches);
-    }
-
-    private static QueryScope selectedExists(ExistsPredicate predicate, int index) {
-        var label = (predicate.negated() ? "NOT EXISTS" : "EXISTS") + " subquery[" + index + "]";
-        return new QueryScope(predicate.subquery(), label, null);
-    }
-
-    private static QueryScope missing(String label) {
-        return failure("SCOPE_NOT_FOUND", label, "No matching CTE is defined by this statement's WITH clause.");
-    }
-
-    private static QueryScope failure(String code, String label, String message) {
-        return new QueryScope(null, label, new Mismatch(code, label, message));
     }
 }

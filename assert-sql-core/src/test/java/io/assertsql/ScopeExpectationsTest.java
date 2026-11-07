@@ -300,10 +300,14 @@ class ScopeExpectationsTest {
     void diagnosticsIdentifyTheNamedDefinitionAndHideModelPathsForRenderedSql() {
         var result = Expect.sql(POSTGRESQL)
             .as("report contract")
-            .cte("page", query -> query.as("page size").structurallyEquals("SELECT id FROM users LIMIT 20"))
+            .cte("page", query -> query
+                .as("page size")
+                .structurallyEquals("SELECT id FROM users LIMIT 20")
+            )
             .build()
             .evaluate("WITH other AS (SELECT 1), page AS (SELECT id FROM users LIMIT 10) SELECT id FROM page");
-        assertEquals("CTE \"page\" (WITH item 2) [page size]", result.mismatches().getFirst().path());
+        assertEquals("CTE \"page\" (WITH item 2)", result.mismatches().getFirst().path());
+        assertEquals(List.of("report contract", "page size"), result.mismatches().getFirst().descriptions());
         assertTrue(result.describe().contains("Expected SQL <LIMIT 20> but was <LIMIT 10>"), result::describe);
         assertFalse(result.describe().contains("limitOffset"));
         assertTrue(result.describe().startsWith("[report contract]"));

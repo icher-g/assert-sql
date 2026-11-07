@@ -18,6 +18,17 @@ final class BindingValues {
         return Objects.deepEquals(expected, actual);
     }
 
+    static String describe(Object value) {
+        try {
+            var text = java.util.Arrays.deepToString(new Object[]{value});
+            text = text.substring(1, text.length() - 1);
+            return text.length() <= 200 ? text : text.substring(0, 200) + "… (truncated)";
+        }
+        catch (RuntimeException ignored) {
+            return "unavailable";
+        }
+    }
+
     static String name(String name) {
         Objects.requireNonNull(name, "name");
         if (
@@ -37,6 +48,7 @@ final class BindingValues {
         return position;
     }
 
+    @SuppressWarnings("SuspiciousSystemArraycopy")
     private static Object copy(Object value, Set<Object> active) {
         if (value instanceof Date date) {
             return date.clone();
