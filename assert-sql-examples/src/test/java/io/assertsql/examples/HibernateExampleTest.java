@@ -117,7 +117,7 @@ class HibernateExampleTest {
     }
 
     @Test
-    void reportsTheSqmBoundaryForCompactEqualityProducedByHibernate() {
+    void assertsCompactEqualityProducedByHibernate() {
         // SQL inspected: SELECT u1_0.id FROM users u1_0 WHERE u1_0.tenant_id=? ORDER BY u1_0.id
         var capture = new HibernateSqlCapture();
         try (var session = database.sessionFactory().withOptions().statementInspector(capture).openSession()) {
@@ -128,11 +128,14 @@ class HibernateExampleTest {
             assertEquals(1, capture.statements().size());
             var sql = capture.statements().getFirst();
             assertTrue(sql.contains("tenant_id=?"), sql);
-            var expectation = Expect.sql(ANSI).select().table("users").build();
-            var result = expectation.evaluate(sql);
-            assertFalse(result.matches(), "SQM 0.5.0 does not separate the adjacent = and ? tokens.");
-            assertEquals("PARSE_ERROR", result.mismatches().getFirst().code());
-            assertThrows(AssertionError.class, result::assertMatches);
+            var expectation = Expect.sql(ANSI)
+                .select()
+                .table("users")
+                .where("u1_0.tenant_id = ?")
+                .orderBy("u1_0.id")
+                .parameterCount(1)
+                .build();
+            expectation.assertMatches(sql);
         } finally {
             capture.clear();
         }

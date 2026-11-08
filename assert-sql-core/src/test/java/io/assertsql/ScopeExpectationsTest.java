@@ -265,12 +265,12 @@ class ScopeExpectationsTest {
     }
 
     @Test
-    void retainsTheFailSafeGuardForAmbiguousSetClauseOwnership() {
+    void inspectsCompositeOrderingAndPaginationInsideACte() {
         var sql = "WITH page AS (SELECT id FROM users UNION SELECT id FROM orders ORDER BY id LIMIT 5) SELECT id FROM page";
         var expectation = Expect.sql(POSTGRESQL).cte("page", query -> query.orderBy("id").noLimit()).build();
         var result = expectation.evaluate(sql);
-        assertEquals(2, result.mismatches().size());
-        assertTrue(result.mismatches().stream().allMatch(mismatch -> mismatch.code().equals("SQM_SCOPE_UNSUPPORTED")));
+        assertEquals(1, result.mismatches().size());
+        assertEquals("LIMIT_PRESENT", result.mismatches().getFirst().code());
         Expect.sql(POSTGRESQL).cte("page", query -> query.table("users", "orders")).build().assertMatches(sql);
     }
 

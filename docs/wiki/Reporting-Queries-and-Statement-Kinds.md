@@ -92,7 +92,7 @@ Expect.sql(POSTGRESQL)
 ```
 
 Kind checks share the collection counters' outer-body classification. MERGE and
-other DML syntax must be supported by the chosen SQM parser. SQM 0.5.0 rejects
+other DML syntax must be supported by the chosen SQM parser. SQM 0.5.1 rejects
 WITH followed by an outer INSERT/UPDATE; no alternative parser is introduced.
 Data-changing CTEs remain separate selected bodies, so a SELECT with an UPDATE
 inside a CTE is still an outer SELECT. Kind checks are not a read-only guarantee.

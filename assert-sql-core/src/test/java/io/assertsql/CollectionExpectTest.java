@@ -222,7 +222,7 @@ class CollectionExpectTest {
     }
 
     @Test
-    void unavailableBindingsAndUnsupportedChecksCannotProveAZeroMatchCount() {
+    void unavailableBindingsAndMatchingOrderedSetQueriesCannotProveAZeroMatchCount() {
         var binding = Expect.sql(POSTGRESQL)
             .binding("id", 42L)
             .build();
@@ -231,14 +231,14 @@ class CollectionExpectTest {
             .build()
             .evaluate(List.of("SELECT :id"));
         assertCode(unavailable, "BINDINGS_UNAVAILABLE");
-        var unsupported = Expect.sql(POSTGRESQL)
+        var ordered = Expect.sql(POSTGRESQL)
             .orderBy("id")
             .build();
         var result = Expect.statements(POSTGRESQL)
-            .matchingCount(unsupported, 0)
+            .matchingCount(ordered, 0)
             .build()
             .evaluate(List.of("SELECT id FROM users UNION ALL SELECT id FROM archived ORDER BY id"));
-        assertCode(result, "SQM_SCOPE_UNSUPPORTED");
+        assertCode(result, "MATCH_COUNT_MISMATCH");
     }
 
     @Test

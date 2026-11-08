@@ -23,7 +23,7 @@ zero forbids that kind. Every supplied entry counts once, including duplicate SQ
 Subqueries, set-operation terms, and CTE bodies do not become separate entries.
 WITH is classified by its outer body. For example, a SELECT with an UPDATE inside
 a CTE is one SELECT; `updateCount(0)` checks outer statement kinds, not all possible
-database side effects. The chosen SQM parser must support the SQL: SQM 0.5.0
+database side effects. The chosen SQM parser must support the SQL: SQM 0.5.1
 currently rejects WITH followed by an outer INSERT or UPDATE.
 
 Add a callback when only statements satisfying additional conditions should count:

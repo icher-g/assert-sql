@@ -49,7 +49,7 @@ same dialect for parsing and validation: ANSI uses SQM's generic validator; the
 other four dialects use their SQM extensions and default dialect versions.
 
 Each SQM problem retains its code, message, available clause path, and reporting
-order in `Match`. SQM 0.5.0 exposes no severity or warning field: every reported
+order in `Match`. SQM 0.5.1 exposes no severity or warning field: every reported
 problem fails the check. Unsupported dialect identifiers are rejected when creating
 the check. Custom `DialectQuery` models and MERGE statements unsupported by SQM's
 configured dialect capabilities produce `VALIDATION_UNSUPPORTED`; native SQM
@@ -60,7 +60,7 @@ context. Inside `.outer(...)`, `.cte(...)`, `.derived(...)`, or `.exists(...)`, 
 validates only the selected body as a standalone statement, without enclosing
 bindings. SQM supports query and DML validation, including the CTE/subquery forms
 covered by the tests; its coverage and limitations apply here. In particular,
-SQM 0.5.0 can accept an unknown derived-table output column such as
+SQM 0.5.1 can accept an unknown derived-table output column such as
 `SELECT q.missing FROM (SELECT id FROM app.users) q`. A successful check means SQM
 reported no problems; it does not prove runtime results, constraints, or plans.
 

@@ -101,8 +101,8 @@ zero-UPDATE requirement fail. The update diagnostic identifies original index 1.
 The transaction rolls back after verification.
 
 The fixed UPDATE value is an HQL literal and the tenant list is bound through
-`IN (?)`, so the SQL is supported by SQM 0.5.0 without rewriting the captured text.
-The existing compact `column=?` parser boundary remains documented below.
+`IN (?)`, so the SQL is supported by SQM 0.5.1 without rewriting the captured text.
+Compact `column=?` equality is also covered by a real Hibernate query below.
 
 All ORM execution belongs to the example fixture; Assert SQL only inspects the
 supplied snapshot. Count budgets require an explicit capture window and known
@@ -307,12 +307,7 @@ named/indexed rendering does not turn pagination into extra placeholders. The
 tenant ID remains bound. An application that binds pagination instead should
 assert parameter occurrences rather than use literal `limit`/`offset` checks.
 
-SQM **0.5.0 rejects the parenthesized AND predicate** jOOQ renders for a normal
-two-condition WHERE, for example `WHERE (u.tenant_id = :tenantId AND u.active = :active)`.
-The jOOQ example therefore demonstrates a single tenant predicate. The custom
-builder demonstrates tenant plus active filtering. No generated SQL is stripped,
-rewritten, or replaced with a hand-written expected statement to hide this parser
-boundary. Supporting that jOOQ output requires an upstream SQM parser fix.
+SQM 0.5.1 supports the parenthesized AND predicate jOOQ renders for a normal two-condition WHERE. `assertsParenthesizedAndPredicateProducedByJooq` verifies the unchanged generated SQL with both named parameters.
 
 Official jOOQ references:
 [connection configuration](https://www.jooq.org/doc/3.19/manual/sql-building/dsl-context/connection-vs-datasource/),
@@ -493,19 +488,9 @@ All Hibernate tests exercise the real ORM and embedded H2 in the default Maven/C
 build. Tests never call `inspect(...)` themselves or substitute a hand-written SQL
 string for Hibernate output. Query result assertions are separate from SQL assertions.
 
-### SQM 0.5.0 parser boundary
+### SQM 0.5.1 compatibility
 
-Hibernate emits compact equality predicates such as `u1_0.tenant_id=?`. SQM 0.5.0
-does not separate the adjacent `=` and `?` tokens, so parsing fails, for example
-with `Unsupported expression token: order` when an ORDER BY follows. The real
-`reportsTheSqmBoundaryForCompactEqualityProducedByHibernate` query executes
-successfully against H2 and verifies that Assert SQL returns `PARSE_ERROR` for its
-unchanged SQL. This needs an upstream parser fix for ordinary equality-based queries.
-
-The passing showcase uses a bound tenant-list query (`u.tenantId in :tenantIds`),
-which Hibernate renders as `tenant_id in (?)`. That SQL parses successfully without
-rewriting. The integration example demonstrates supported output and this boundary;
-it does not claim all Hibernate-generated SQL is supported.
+Hibernate emits compact equality predicates such as `u1_0.tenant_id=?`. The real `assertsCompactEqualityProducedByHibernate` query executes against H2 and verifies the unchanged SQL with WHERE, ORDER BY, and parameter assertions. Both compact equality and the IN predicates in the other examples are supported without rewriting.
 
 `StatementInspector` observes SQL before JDBC statement preparation, not bind calls
 or successful execution. It sees placeholders such as `?`, not the value `42L` or

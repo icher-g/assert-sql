@@ -8,9 +8,32 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static io.sqm.core.dialect.SqlDialectId.POSTGRESQL;
+import static org.jooq.impl.DSL.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JooqExampleTest {
+    @Test
+    void assertsParenthesizedAndPredicateProducedByJooq() {
+        var context = using(org.jooq.SQLDialect.POSTGRES);
+        var tenant = field("u.tenant_id", Long.class);
+        var active = field("u.active", Boolean.class);
+        var predicate = tenant.eq(param("tenantId", 42L))
+            .and(active.eq(param("active", true)));
+        var query = context.select(field("u.id"))
+            .from("users u")
+            .where(predicate);
+        var sql = query.getSQL(ParamType.NAMED);
+        assertTrue(sql.contains("where ("), sql);
+        Expect.sql(POSTGRESQL)
+            .select()
+            .table("users u")
+            .where("(u.tenant_id = :tenantId AND u.active = :active)")
+            .parameter("tenantId", "active")
+            .parameterCount(2)
+            .build()
+            .assertMatches(sql);
+    }
+
     @Test
     void assertsTheDerivedTableAndCorrelatedExistsIndependently() {
         /* SQL inspected (formatted for readability):

@@ -58,9 +58,7 @@ the queries; Assert SQL inspects the captured text. The fixture's SQL uses the s
 accepted by SQM's ANSI parser; choose the corresponding dialect for your application.
 The hook captures JDBC placeholders such as `?`, not their bind values.
 
-The passing example uses an `IN` predicate because SQM 0.5.0 fails to parse compact
-equality such as `tenant_id=?` emitted by Hibernate. A separate real query demonstrates
-that parser failure. Captured SQL is never rewritten to hide it.
+The examples cover both IN predicates and compact equality such as `tenant_id=?` emitted by Hibernate. SQM 0.5.1 parses the unchanged captured SQL.
 
 Use one capture per session/test to isolate parallel tests. A factory-wide capture
 must be thread-safe and needs additional coordination to separate test operations.

@@ -13,9 +13,6 @@ import java.util.function.Consumer;
  * Invalid expected SQL is reported after actual SQL parses successfully.
  * Built expectations support concurrent reuse when their custom checks are
  * thread-safe. SQL is never executed.
- * Ordering/pagination checks return SQM_SCOPE_UNSUPPORTED for set-query models
- * whose final term carries ordering/pagination, since SQM 0.5.0 loses the
- * distinction between local and outer clauses in that shape.
  */
 public interface Expect {
     /**

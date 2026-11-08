@@ -364,58 +364,48 @@ final class DefaultExpect implements Expect {
 
         @Override
         public Expect.Builder noOrderBy() {
-            return checked(
-                outerClause(statement ->
-                    result(ModelInspector.orderBy(statement) == null, "ORDER_BY_PRESENT", "statement.orderBy", "Expected no outer ORDER BY.")
-                )
+            return checked(statement ->
+                result(ModelInspector.orderBy(statement) == null, "ORDER_BY_PRESENT", "statement.orderBy", "Expected no outer ORDER BY.")
             );
         }
 
         @Override
         public Expect.Builder limit(long count) {
             nonNegative(count);
-            return checked(
-                outerClause(statement ->
-                    result(
-                        literalCount(ModelInspector.limit(statement), count),
-                        "LIMIT_MISMATCH",
-                        "statement.limit",
-                        "Expected a literal outer row limit of " + count + "."
-                    )
+            return checked(statement ->
+                result(
+                    literalCount(ModelInspector.limit(statement), count),
+                    "LIMIT_MISMATCH",
+                    "statement.limit",
+                    "Expected a literal outer row limit of " + count + "."
                 )
             );
         }
 
         @Override
         public Expect.Builder noLimit() {
-            return checked(
-                outerClause(statement ->
-                    result(!ModelInspector.hasLimit(statement), "LIMIT_PRESENT", "statement.limit", "Expected no outer limit specification.")
-                )
+            return checked(statement ->
+                result(!ModelInspector.hasLimit(statement), "LIMIT_PRESENT", "statement.limit", "Expected no outer limit specification.")
             );
         }
 
         @Override
         public Expect.Builder offset(long count) {
             nonNegative(count);
-            return checked(
-                outerClause(statement ->
-                    result(
-                        literalCount(ModelInspector.offset(statement), count),
-                        "OFFSET_MISMATCH",
-                        "statement.offset",
-                        "Expected a literal outer offset of " + count + "."
-                    )
+            return checked(statement ->
+                result(
+                    literalCount(ModelInspector.offset(statement), count),
+                    "OFFSET_MISMATCH",
+                    "statement.offset",
+                    "Expected a literal outer offset of " + count + "."
                 )
             );
         }
 
         @Override
         public Expect.Builder noOffset() {
-            return checked(
-                outerClause(statement ->
-                    result(ModelInspector.offset(statement) == null, "OFFSET_PRESENT", "statement.offset", "Expected no outer offset specification.")
-                )
+            return checked(statement ->
+                result(ModelInspector.offset(statement) == null, "OFFSET_PRESENT", "statement.offset", "Expected no outer offset specification.")
             );
         }
 
@@ -658,20 +648,6 @@ final class DefaultExpect implements Expect {
             return expected;
         }
 
-        private static Check outerClause(Check check) {
-            return statement ->
-                ModelInspector.ambiguousSetTail(statement)
-                    ? List.of(
-                        new Mismatch(
-                            "SQM_SCOPE_UNSUPPORTED",
-                            "statement",
-                            "SQM 0.5.0 cannot distinguish outer from final-term ordering/pagination in this set-query model. "
-                                + "Use parenthesized terms with clauses on the composite query."
-                        )
-                    )
-                    : check.evaluate(statement);
-        }
-
         private static boolean literalCount(Expression expression, long expected) {
             return expression instanceof LiteralExpr literal
                 && literal.value() instanceof Number number
@@ -724,7 +700,7 @@ final class DefaultExpect implements Expect {
                         var difference = StructureDifference.between(expected, actual, dialect.get(), bindings.diagnostics().redaction());
                         return List.of(new Mismatch(kind.toUpperCase(Locale.ROOT) + "_MISMATCH", difference.path(), difference.message()));
                     };
-                    return kind.equals("order_by") ? outerClause(check).evaluate(statement) : check.evaluate(statement);
+                    return check.evaluate(statement);
                 };
             });
             return this;

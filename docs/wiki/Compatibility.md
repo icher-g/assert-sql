@@ -2,34 +2,22 @@
 
 # SQM compatibility
 
-Assert SQL uses SQM **0.5.0** from Maven Central. Parser and model capabilities depend on the selected dialect.
+Assert SQL uses SQM **0.5.1** from Maven Central. Parser and model capabilities depend on the selected dialect.
 
 ## Set-query ordering and pagination
 
-Assert SQL inspects the SQM model without reparsing or interpreting SQL itself.
-The current SQM parser attaches trailing ORDER BY/LIMIT/OFFSET to the last term
-of some unparenthesized set queries rather than to their composite node. Our outer
-ordering/pagination checks return `SQM_SCOPE_UNSUPPORTED` when the final term
-carries such clauses; both positive and negative assertions fail instead of
-guessing the scope. This conservative restriction also applies to intentionally
-term-local clauses on the last term, since that distinction is lost in the model.
-For composite-level assertions with this version, parenthesize the terms and put
-the ordering/pagination after the composite query:
+SQM 0.5.1 attaches trailing ORDER BY/LIMIT/OFFSET to the composite set query.
+Outer ordering/pagination assertions work with unparenthesized UNION queries,
+including queries inside CTEs. Parenthesized term-local clauses remain local.
 
-```sql
-(SELECT id FROM users) UNION (SELECT id FROM orders)
-ORDER BY id DESC LIMIT 20 OFFSET 40
-```
-
-This parser boundary needs an SQM fix; Assert SQL does not silently reinterpret
-the final term's clauses. SQL Server's native `@id` expression syntax and some
-keyword-based names such as `:limit` are also rejected by SQM 0.5.0. Parser-supported
+SQL Server's native `@id` expression syntax and some
+keyword-based names such as `:limit` are also rejected by SQM 0.5.1. Parser-supported
 canonical named syntax such as `:id` and `:pageSize` works. These inputs produce
 parse diagnostics rather than successful negative assertions.
 
 ## Captured Hibernate equality
 
-SQM 0.5.0 rejects compact equality such as `tenant_id=?` emitted by Hibernate. Captured SQL is not rewritten. See the [Hibernate guide](https://github.com/icher-g/assert-sql/wiki/Hibernate) and [real parser-boundary test](https://github.com/icher-g/assert-sql/blob/main/assert-sql-examples/src/test/java/io/assertsql/examples/HibernateExampleTest.java).
+SQM 0.5.1 supports compact equality such as `tenant_id=?` emitted by Hibernate and parenthesized AND predicates emitted by jOOQ. The integration tests inspect unchanged generated SQL; no rewriting is required.
 
 ## Other feature boundaries
 

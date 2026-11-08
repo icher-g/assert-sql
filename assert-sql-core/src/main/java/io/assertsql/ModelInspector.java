@@ -90,14 +90,6 @@ final class ModelInspector {
         return outerBody(statement) instanceof SelectQuery select ? select.distinct() : null;
     }
 
-    static boolean ambiguousSetTail(Statement statement) {
-        if (!(outerBody(statement) instanceof CompositeQuery composite)) {
-            return false;
-        }
-        var last = composite.terms().getLast();
-        return orderBy(last) != null || hasLimit(last) || offset(last) != null || ambiguousSetTail(last);
-    }
-
     static TopSpec top(Statement statement) {
         return outerBody(statement) instanceof SelectQuery select ? select.topSpec() : null;
     }

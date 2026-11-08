@@ -118,7 +118,7 @@ class SchemaChecksTest {
     @Test
     void retainsSqmBoundaryForUnknownDerivedTableOutputColumns() {
         var sql = "SELECT q.missing FROM (SELECT id FROM app.users) q";
-        // SQM 0.5.0 currently accepts this unknown derived output column. The adapter adds no independent resolver.
+        // SQM 0.5.1 currently accepts this unknown derived output column. The adapter adds no independent resolver.
         var nativeResult = nativeValidator().validate(parse(sql));
         assertTrue(nativeResult.ok());
         var result = Expect.sql(POSTGRESQL).satisfies(SchemaChecks.validAgainst(SCHEMA, POSTGRESQL)).build().evaluate(sql);

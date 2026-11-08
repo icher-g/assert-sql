@@ -34,7 +34,7 @@ public final class SchemaChecks {
      * SQL is neither parsed nor validated here; validation runs only when the check is evaluated.
      *
      * <p>Every SQM problem becomes a mismatch with its original code, message, and available clause path,
-     * in SQM's reporting order. SQM 0.5.0 exposes no severity/warning field; every problem fails the check.
+     * in SQM's reporting order. SQM 0.5.1 exposes no severity/warning field; every problem fails the check.
      * An enclosing expectation's redaction policy may omit free-form message detail while retaining codes and paths.
      * Unsupported dialect-query models and statement kinds return VALIDATION_UNSUPPORTED instead of
      * passing silently. Statement-kind support is taken from SQM's dialect capabilities.</p>

@@ -136,15 +136,39 @@ class QueryShapeTest {
     }
 
     @Test
-    void ambiguousSqmSetTailCannotPassPositiveOrNegativeOuterClauseChecks() {
+    void setTailClausesBelongToTheCompositeQuery() {
         var sql = "SELECT id FROM users UNION SELECT id FROM orders ORDER BY id LIMIT 5 OFFSET 2";
-        var result = Expect.sql(POSTGRESQL).orderBy("id").limit(5).offset(2).noOrderBy().noLimit().noOffset().build().evaluate(sql);
-        assertEquals(6, result.mismatches().size());
-        assertTrue(result.mismatches().stream().allMatch(m -> m.code().equals("SQM_SCOPE_UNSUPPORTED")));
+        Expect.sql(POSTGRESQL)
+            .orderBy("id")
+            .limit(5)
+            .offset(2)
+            .build()
+            .assertMatches(sql);
+        var result = Expect.sql(POSTGRESQL)
+            .noOrderBy()
+            .noLimit()
+            .noOffset()
+            .build()
+            .evaluate(sql);
+        assertEquals(3, result.mismatches().size());
+        assertEquals(List.of("ORDER_BY_PRESENT", "LIMIT_PRESENT", "OFFSET_PRESENT"), result.mismatches()
+            .stream()
+            .map(Mismatch::code)
+            .toList());
         assertThrows(AssertionError.class, result::assertMatches);
         // Unrelated checks continue to operate on SQM's model normally.
         Expect.sql(POSTGRESQL).table("users", "orders").build().assertMatches(sql);
         Expect.sql(POSTGRESQL).noOrderBy().noLimit().noOffset().build().assertMatches("SELECT id FROM users UNION SELECT id FROM orders");
+    }
+
+    @Test
+    void parenthesizedFinalTermClausesRemainLocal() {
+        Expect.sql(POSTGRESQL)
+            .noOrderBy()
+            .noLimit()
+            .noOffset()
+            .build()
+            .assertMatches("SELECT id FROM users UNION (SELECT id FROM orders ORDER BY id LIMIT 5 OFFSET 2)");
     }
 
     @ParameterizedTest

@@ -116,7 +116,7 @@ provides the structural API in `io.assertsql`; optional `assert-sql-validation`
 adds `io.assertsql.validation.SchemaChecks`. Both use Maven group
 `io.github.icher-g`. JUnit Jupiter is used only for tests.
 
-SQM is an external dependency (`io.github.icher-g:sqm-core:0.5.0`), resolved from
+SQM is an external dependency (`io.github.icher-g:sqm-core:0.5.1`), resolved from
 Maven Central. No extra repository configuration, GitHub credentials, or local
 SQM checkout is needed. Its version is managed by the parent's `sqm.version` property.
 
