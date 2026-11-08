@@ -178,6 +178,7 @@
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
+                            <checksums>required</checksums>
                             <autoPublish>false</autoPublish>
                             <waitUntil>validated</waitUntil>
                             <skipPublishing>${maven.deploy.skip}</skipPublishing>
