@@ -52,6 +52,14 @@ no version commit or push back to GitHub. It then runs tests, builds source and
 Javadoc JARs, signs artifacts using the Maven GPG plugin's BC signer, and uploads
 the parent POM, core module, and validation module to Central Portal.
 
+The Central profile generates only the required MD5 and SHA-1 checksums
+(`checksums=required`), omitting optional SHA-256 and SHA-512 sidecars.
+Each library publishes its POM, binary JAR, sources JAR, and Javadoc JAR, each
+with a signature and the two required checksums: 16 files per library.
+The parent POM contributes four files, for 36 files total. Signature files
+do not need their own checksums. Sources, Javadoc, and signatures remain included
+to meet [Maven Central requirements](https://central.sonatype.org/publish/requirements/).
+
 Like SQM, `autoPublish` is disabled: the job waits for validation, then you finish
 publication in [Central Portal](https://central.sonatype.com/publishing/deployments).
 The generated deployment bundle is retained as a workflow artifact for seven days.
