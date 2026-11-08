@@ -57,9 +57,16 @@ publication in [Central Portal](https://central.sonatype.com/publishing/deployme
 The generated deployment bundle is retained as a workflow artifact for seven days.
 Central releases are immutable; use a new version for later changes.
 
-Keep `main` on a snapshot version. For a release, tag the intended commit and push
-that tag; the tag determines the release version even if the committed POM still
+Keep `main` on a snapshot version. Prepare release notes on a dedicated branch,
+open a pull request, and merge only after required CI checks pass. For a release,
+tag that merged commit and push only the release tag; never push commits directly
+to `main` or bypass branch protection. The tag determines the release version even if the committed POM still
 contains the snapshot version. No release is uploaded merely by opening a pull request.
+
+For the first release, use `v0.1.0` and the notes in [releases/0.1.0.md](releases/0.1.0.md).
+Create the GitHub release against that same tag. Confirm that the Central workflow
+has validated the deployment, finish publishing in Central Portal, and verify that
+both library artifacts resolve from Maven Central before announcing availability.
 
 ## Local packaging checks
 
