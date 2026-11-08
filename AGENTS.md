@@ -2,6 +2,15 @@
 
 These rules apply throughout the Assert SQL repository. Follow them for new and modified code.
 
+## Branches, pull requests, and CI
+
+- Make changes on a dedicated branch; use the `codex/` prefix for agent-created branches.
+- Push changes to that branch and open a pull request. Never push directly to `main` or bypass branch protection.
+- Wait for all required CI checks to pass on the latest PR commit before merging. Local verification does not replace CI.
+- If CI fails, fix the failure on the PR branch and wait for the updated checks to pass before merging.
+- Merge through the pull request only after required checks and repository review requirements are satisfied.
+- Create release tags only from commits merged through a pull request whose required CI checks passed. Release tag pushes may trigger publishing.
+
 ## Line length and wrapping
 
 - Keep a statement, method signature, or expression on one line when it fits within 150 characters, including indentation, except for fluent call chains.
